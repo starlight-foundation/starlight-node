@@ -1,0 +1,16 @@
+[package]
+name = "starlight-node"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bitvec = "1.0.1"
+blake2 = "0.10.6"
+serde = { version = "1.0.196", features = ["derive"] }
+rand = "0.8.5"
+ed25519-dalek-blake2-feeless = "1.0.1"
+primitive-types = "0.12.2"
+hex = "0.4.3"
+leapfrog = { version = "0.3.0", features = ["stable_alloc"] }
