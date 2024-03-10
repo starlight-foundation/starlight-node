@@ -3,7 +3,7 @@ use crate::{bail, error};
 use crate::error::Error;
 use bitvec::prelude::*;
 use blake2::digest::{Update, VariableOutput};
-use blake2::Blake2bVar;
+use blake2::{Blake2b512, Blake2bVar};
 use serde::{Deserialize, Deserializer};
 use std::str::FromStr;
 

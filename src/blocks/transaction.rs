@@ -1,28 +1,30 @@
-use crate::{blocks::Hash, keys::{encoding::blake2b, public::Public, signature::Signature}, pow::{Difficulty, Work}};
+use crate::{blocks::Hash, keys::{public::Public, signature::Signature}, pow::{Difficulty, Work}};
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct Transaction {
     pub nonce: u64,
-    pub balance: u64,
     pub from: Public,
+    pub balance: u64,
+    pub amount: u64,
     pub to: Public,
     pub work: Work,
     pub signature: Signature
 }
 
 impl Transaction {
-    pub fn validate(&self) -> Result<(), ()> {
-        const MSG_SIZE: usize = std::mem::size_of::<Transaction>()
-            - std::mem::size_of::<Work>()
+    pub fn verify_and_hash(&self) -> Result<Hash, ()> {
+        const TX_HASH_INPUT_SIZE: usize = std::mem::size_of::<Transaction>()
             - std::mem::size_of::<Signature>();
-        let mut msg = [0u8; MSG_SIZE];
-        msg[0..8].copy_from_slice(&self.nonce.to_le_bytes());
-        msg[8..16].copy_from_slice(&self.balance.to_le_bytes());
-        msg[16..48].copy_from_slice(&self.from.0);
-        msg[48..80].copy_from_slice(&self.to.0);
-        let hash = Hash::hash(&msg);
-        self.from.verify(&hash.0, &self.signature)?;
-        self.work.verify(&hash, &Difficulty::BASE)
+        let tx_msg: &[u8; TX_HASH_INPUT_SIZE] = unsafe { std::mem::transmute(self) };
+        let tx_hash = Hash::of_slice(tx_msg);
+        self.from.verify(&tx_hash.0, &self.signature)?;
+        const WORK_HASH_INPUT_SIZE: usize = std::mem::size_of::<u64>()
+            + std::mem::size_of::<Public>();
+        let work_msg: &[u8; WORK_HASH_INPUT_SIZE] = unsafe { std::mem::transmute(self) };
+        let work_hash = Hash::of_slice(work_msg);
+        self.work.verify(&work_hash, &Difficulty::BASE)?;
+        Ok(tx_hash)
     }
 }
 
