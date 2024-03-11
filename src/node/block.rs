@@ -9,48 +9,65 @@ pub struct Block {
     pub votes: Box<[Vote]>
 }
 
-fn merkle_row(hashes: &[Hash]) -> Box<[Hash]> {
+fn merkle_row(hashes: &[Hash]) -> Vec<Hash> {
     assert_eq!(hashes.len() % 2, 0);
-    let mut row = Vec::with_capacity(hashes.len() / 2);
+    let mut row = Vec::with_capacity(
+        hashes.len() / 2 + ((hashes.len() / 2) % 2)
+    );
     for pair in hashes.chunks(2) {
         let mut hb = HashBuilder::new();
         hb.update(&pair[0].0);
         hb.update(&pair[1].0);
         row.push(hb.finalize());
     }
-    row.into_boxed_slice()
+    if row.len() < row.capacity() {
+        row.push(Hash::zero());
+    }
+    row
+}
+
+fn merkle_root(hashes: Vec<Hash>) -> Hash {
+    let mut row = hashes;
+    while row.len() > 1 {
+        row = merkle_row(&row);
+    }
+    row[0]
 }
 
 impl Block {
     pub fn verify_and_hash(&self) -> Result<Hash, ()> {
-        let mut tx_hashes = Vec::with_capacity(
-            self.transactions.len() + self.transactions.len() % 2
-        );
-        for tx in self.transactions.iter() {
-            tx_hashes.push(tx.verify_and_hash()?);
-        }
-        if self.transactions.len() % 2 != 0 {
-            tx_hashes.push(*tx_hashes.last().unwrap());
-        }
-        let mut tx_row = merkle_row(&tx_hashes);
-        while tx_row.len() > 1 {
-            tx_row = merkle_row(&tx_row);
-        }
-        let tx_hash = tx_row[0];
-        let mut vote_hashes = Vec::with_capacity(
-            self.votes.len() + self.votes.len() % 2
-        );
-        for vote in self.votes.iter() {
-            vote_hashes.push(vote.verify_and_hash()?);
-        }
-        if self.votes.len() % 2 != 0 {
-            vote_hashes.push(*vote_hashes.last().unwrap());
-        }
-        let mut vote_row = merkle_row(&vote_hashes);
-        while vote_row.len() > 1 {
-            vote_row = merkle_row(&vote_row);
-        }
-        let vote_hash = vote_row[0];
+        let tx_hash = match self.transactions.len() {
+            0 => Hash::zero(),
+            1 => self.transactions[0].verify_and_hash()?,
+            _ => {
+                let mut tx_hashes = Vec::with_capacity(
+                    self.transactions.len() + self.transactions.len() % 2
+                );
+                for tx in self.transactions.iter() {
+                    tx_hashes.push(tx.verify_and_hash()?);
+                }
+                if tx_hashes.len() < tx_hashes.capacity() {
+                    tx_hashes.push(Hash::zero());
+                }
+                merkle_root(tx_hashes)
+            }
+        };
+        let vote_hash = match self.votes.len() {
+            0 => Hash::zero(),
+            1 => self.votes[0].verify_and_hash()?,
+            _ => {
+                let mut vote_hashes = Vec::with_capacity(
+                    self.votes.len() + self.votes.len() % 2
+                );
+                for vote in self.votes.iter() {
+                    vote_hashes.push(vote.verify_and_hash()?);
+                }
+                if vote_hashes.len() < vote_hashes.capacity() {
+                    vote_hashes.push(Hash::zero());
+                }
+                merkle_root(vote_hashes)
+            }
+        };
         let block_hash = {
             let mut hb = HashBuilder::new();
             hb.update(&self.slot.to_le_bytes());
@@ -64,3 +81,4 @@ impl Block {
         Ok(block_hash)
     }
 }
+

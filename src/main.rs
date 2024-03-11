@@ -5,6 +5,7 @@ mod error;
 mod node;
 mod blocks;
 mod pow;
+mod network;
 
 fn main() {
     let seed = Seed::random();

@@ -30,5 +30,9 @@ impl Hash {
     pub fn of_slice(slice: &[u8]) -> Self {
         Self(blake2b::<{Self::LEN}>(slice))
     }
+
+    pub const fn zero() -> Self {
+        Self([0u8; 32])
+    }
 }
 
