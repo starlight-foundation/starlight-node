@@ -1,6 +1,6 @@
 use blake2::{digest::{Update, VariableOutput}, Blake2bVar};
 
-use crate::{hexify, keys::encoding::blake2b};
+use crate::{hexify, keys::blake2b};
 
 pub struct HashBuilder(Blake2bVar);
 impl HashBuilder {

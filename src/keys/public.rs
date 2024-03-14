@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serializer};
 use super::signature::Signature;
 
 /// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct Public(pub [u8; 32]);
 
 hexify!(Public, "public key");
@@ -135,13 +135,17 @@ impl Public {
         Ok(PublicKey::from_bytes(&self.0).map_err(|e| error!("Converting to PublicKey: {}", e))?)
     }
 
-    pub fn checksum(&self) -> [u8; 5] {
+    fn checksum(&self) -> [u8; 5] {
         let mut check = [0u8; 5];
         let mut blake = Blake2bVar::new(check.len()).unwrap();
         blake.update(&self.0);
         blake.finalize_variable(&mut check).unwrap();
 
         check
+    }
+
+    pub fn burn() -> Self {
+        Self([0u8; 32])
     }
 
     pub fn verify(&self, message: &[u8], signature: &Signature) -> Result<(), ()> {

@@ -1,6 +1,6 @@
-use super::Hash;
+use super::{Hash, Slot};
 
 pub struct Pair {
-    pub slot: u64,
+    pub slot: Slot,
     pub block: Hash
 }

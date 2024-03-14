@@ -1,7 +1,7 @@
 // Derived from the pow module of github.com/feeless/feeless@978eba7.
 use crate::error::Error;
 use crate::error;
-use crate::keys::encoding::{deserialize_from_str, expect_len, to_hex};
+use crate::keys::{deserialize_from_str, expect_len, to_hex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::convert::TryFrom;

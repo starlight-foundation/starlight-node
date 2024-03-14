@@ -72,7 +72,7 @@ pub fn blake2b<const S: usize>(data: &[u8]) -> [u8; S] {
 static ALPHABET: &str = "13456789abcdefghijkmnopqrstuwxyz";
 const ENCODING_BITS: usize = 5;
 
-pub fn encode_slt_base_32(bits: &BitSlice<u8, Msb0>) -> String {
+fn encode_slt_base_32(bits: &BitSlice<u8, Msb0>) -> String {
     debug_assert_eq!(
         bits.len() % ENCODING_BITS,
         0,
@@ -88,7 +88,7 @@ pub fn encode_slt_base_32(bits: &BitSlice<u8, Msb0>) -> String {
     s
 }
 
-pub fn decode_slt_base_32(s: &str) -> Result<BitVec<u8, Msb0>, Error> {
+fn decode_slt_base_32(s: &str) -> Result<BitVec<u8, Msb0>, Error> {
     let mut bits: BitVec<u8, Msb0> = BitVec::new(); // TODO: with_capacity
     for char in s.chars() {
         let value = ALPHABET
@@ -124,11 +124,11 @@ macro_rules! hexify {
             }
 
             pub fn as_hex(&self) -> String {
-                crate::keys::encoding::to_hex(&self.0)
+                crate::keys::to_hex(&self.0)
             }
 
             pub fn as_hex_lower(&self) -> String {
-                crate::keys::encoding::to_hex_lower(&self.0)
+                crate::keys::to_hex_lower(&self.0)
             }
         }
 
@@ -138,7 +138,7 @@ macro_rules! hexify {
             fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 use ::std::convert::TryFrom;
 
-                crate::keys::encoding::expect_len(s.len(), Self::LEN * 2, $description)?;
+                crate::keys::expect_len(s.len(), Self::LEN * 2, $description)?;
                 let vec = hex::decode(s.as_bytes()).map_err(|e| crate::error!(
                     "can't parse hex: {} {}", $description, e
                 ))?;
@@ -160,7 +160,7 @@ macro_rules! hexify {
                     f,
                     "{}({})",
                     stringify!($struct),
-                    crate::keys::encoding::to_hex(self.0.as_ref()),
+                    crate::keys::to_hex(self.0.as_ref()),
                 )
             }
         }

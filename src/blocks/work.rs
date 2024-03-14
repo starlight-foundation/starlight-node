@@ -1,8 +1,8 @@
 // Derived from the pow module of github.com/feeless/feeless@978eba7.
 use crate::blocks::Hash;
 use crate::hexify;
-use crate::keys::encoding::blake2b;
-use crate::pow::difficulty::Difficulty;
+use crate::keys::blake2b;
+use super::Difficulty;
 use rand::RngCore;
 use std::convert::TryFrom;
 
@@ -30,7 +30,7 @@ impl Work {
     }
 
     /// Block and generate forever until we find a solution.
-    pub fn generate(subject: &Hash, threshold: &Difficulty) -> Self {
+    pub fn generate(subject: &Hash, threshold: Difficulty) -> Self {
         let mut work_and_subject = [0u8; 40];
         // We can place the subject in the second part of the slice which will not change.
         &mut work_and_subject[Self::LEN..].copy_from_slice(&subject.0);
@@ -52,7 +52,7 @@ impl Work {
             let b = Self::hash(&work_and_subject);
             let difficulty = Difficulty::from_le_fixed(&b);
 
-            if &difficulty >= threshold {
+            if difficulty >= threshold {
                 break;
             }
         }
@@ -64,9 +64,9 @@ impl Work {
         work
     }
 
-    pub fn verify(&self, subject: &Hash, threshold: &Difficulty) -> Result<(), ()> {
+    pub fn verify(&self, subject: &Hash, threshold: Difficulty) -> Result<(), ()> {
         let difficulty = self.difficulty(subject);
-        if &difficulty >= threshold {
+        if difficulty >= threshold {
             Ok(())
         } else {
             Err(())

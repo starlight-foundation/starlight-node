@@ -1,12 +1,14 @@
-use crate::{blocks::Hash, keys::{public::Public, signature::Signature}, pow::{Difficulty, Work}};
+use crate::{blocks::{Hash, Difficulty, Work}, keys::{Public, Signature}};
+
+use super::Amount;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Transaction {
     pub nonce: u64,
     pub from: Public,
-    pub balance: u64,
-    pub amount: u64,
+    pub balance: Amount,
+    pub amount: Amount,
     pub to: Public,
     pub work: Work,
     pub signature: Signature
