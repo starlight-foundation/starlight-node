@@ -10,7 +10,7 @@ mod work;
 
 pub use difficulty::Difficulty;
 pub use encoding::{deserialize_from_str, expect_len, to_hex, to_hex_lower};
-pub use hash::{Hash, HashBuilder};
+pub use hash::Hash;
 pub use private::Private;
 pub use public::Public;
 pub use seed::Seed;

@@ -1,4 +1,4 @@
-use crate::keys::{Difficulty, Hash, HashBuilder, Public, Signature, Work};
+use crate::keys::{Difficulty, Hash, Public, Signature, Work};
 
 use super::{Amount, TxKind};
 
@@ -17,18 +17,15 @@ pub struct Tx {
 
 impl Tx {
     pub fn verify_and_hash(&self) -> Result<Hash, ()> {
-        let (work_hash, tx_hash) = {
-            let mut hb = HashBuilder::new();
-            hb.update(&self.nonce.to_le_bytes());
-            hb.update(self.from.as_bytes());
-            let work_hash = hb.finalize();
-            hb.update(&self.kind.to_bytes());
-            hb.update(&self.balance.to_bytes());
-            hb.update(&self.amount.to_bytes());
-            hb.update(self.to.as_bytes());
-            let tx_hash = hb.finalize();
-            (work_hash, tx_hash)
-        };
+        let mut bytes = [0u8; 96];
+        bytes[0..8].copy_from_slice(&self.nonce.to_le_bytes());
+        bytes[8..40].copy_from_slice(self.from.as_bytes());
+        bytes[40..48].copy_from_slice(&self.kind.to_bytes());
+        bytes[48..56].copy_from_slice(&self.balance.to_bytes());
+        bytes[56..64].copy_from_slice(&self.amount.to_bytes());
+        bytes[64..96].copy_from_slice(self.to.as_bytes());
+        let work_hash = Hash::digest(&bytes[0..40]);
+        let tx_hash = Hash::digest(&bytes);
         self.work.verify(&work_hash, Difficulty::BASE)?;
         self.from.verify(&tx_hash, &self.signature)?;
         Ok(tx_hash)

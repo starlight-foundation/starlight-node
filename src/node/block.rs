@@ -1,6 +1,6 @@
 use crate::{
     blocks::{Slot, Tx, Vote},
-    keys::{Hash, HashBuilder, Public, Signature},
+    keys::{Hash, Public, Signature},
 };
 
 pub struct Block {
@@ -15,11 +15,11 @@ pub struct Block {
 fn merkle_row(hashes: &[Hash]) -> Vec<Hash> {
     assert_eq!(hashes.len() % 2, 0);
     let mut row = Vec::with_capacity(hashes.len() / 2 + ((hashes.len() / 2) % 2));
+    let mut buf = [0u8; 64];
     for pair in hashes.chunks(2) {
-        let mut hb = HashBuilder::new();
-        hb.update(&pair[0].as_bytes());
-        hb.update(&pair[1].as_bytes());
-        row.push(hb.finalize());
+        buf[0..32].copy_from_slice(&pair[0].as_bytes());
+        buf[32..64].copy_from_slice(&pair[1].as_bytes());
+        row.push(Hash::digest(&buf));
     }
     if row.len() < row.capacity() {
         row.push(Hash::zero());
@@ -66,15 +66,13 @@ impl Block {
                 merkle_root(vote_hashes)
             }
         };
-        let block_hash = {
-            let mut hb = HashBuilder::new();
-            hb.update(&self.slot.to_bytes());
-            hb.update(self.previous.as_bytes());
-            hb.update(self.leader.as_bytes());
-            hb.update(tx_hash.as_bytes());
-            hb.update(vote_hash.as_bytes());
-            hb.finalize()
-        };
+        let mut buf = [0u8; 136];
+        buf[0..8].copy_from_slice(&self.slot.to_bytes());
+        buf[8..40].copy_from_slice(&self.previous.as_bytes());
+        buf[40..72].copy_from_slice(&self.leader.as_bytes());
+        buf[72..104].copy_from_slice(&tx_hash.as_bytes());
+        buf[104..136].copy_from_slice(&vote_hash.as_bytes());
+        let block_hash = Hash::digest(&buf);
         self.leader.verify(&block_hash, &self.signature)?;
         Ok(block_hash)
     }

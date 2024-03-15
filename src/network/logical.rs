@@ -10,6 +10,15 @@ pub struct Logical {
     port: u16,
 }
 
+impl Logical {
+    pub fn to_bytes(&self) -> [u8; 6] {
+        let mut bytes = [0u8; 6];
+        bytes[0..4].copy_from_slice(&self.addr);
+        bytes[4..6].copy_from_slice(&self.port.to_le_bytes());
+        bytes
+    }
+}
+
 impl Display for Logical {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", std::net::Ipv4Addr::from(self.addr), self.port)

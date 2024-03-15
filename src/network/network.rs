@@ -1,10 +1,12 @@
+use std::{sync::Arc, time::Duration};
+
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::net::{SocketAddr, UdpSocket};
+use tokio::net::UdpSocket;
 
 use crate::{
     blocks::{Amount, Slot},
-    keys::Public,
+    keys::{Private, Public, Signature},
     node::Error,
 };
 
@@ -12,83 +14,61 @@ use super::{CenterMap, Logical, Peer, Telemetry, Version};
 
 const VERSION: Version = Version::new(0, 1, 0);
 const MTU: usize = 1280;
-const PEER_UPDATE: u64 = 30;
+const PEER_UPDATE: u64 = 15;
 const PEER_TIMEOUT: u64 = 2 * PEER_UPDATE;
 fn fanout(n: usize) -> usize {
-    (n as f64).sqrt() as usize
+    (n as f64).powf(0.58) as usize
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-enum Message {
+enum MsgData {
     Telemetry(Telemetry),
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+struct Msg {
+    from: Public,
+    signature: Signature,
+    data: MsgData,
+}
+
 pub struct Network {
+    logical: Logical,
+    public: Public,
+    private: Private,
+    socket: Arc<UdpSocket>,
     peers: CenterMap<Public, Amount, Peer>,
-    socket: UdpSocket,
-    my_public: Public,
-    initial_peers: Vec<(Public, Logical)>,
+    initial_peers: Vec<Logical>,
     get_weight: Box<dyn Fn(&Public) -> Amount>,
 }
 
 impl Network {
-    pub fn new(
-        listen_logical: Logical,
-        my_public: Public,
-        initial_peers: Vec<(Public, Logical)>,
-        max_peers: usize,
+    pub async fn new(
+        logical: Logical,
+        public: Public,
+        private: Private,
+        initial_peers: Vec<Logical>,
+        half_max_peers: usize,
         get_weight: Box<dyn Fn(&Public) -> Amount>,
-    ) -> Result<Network, Error> {
-        let socket = UdpSocket::bind(listen_logical)?;
-        let mut peers = CenterMap::new(get_weight(&my_public), max_peers / 2);
-        let now = Slot::now();
-        for (public, logical) in initial_peers.iter() {
-            peers.insert(
-                *public,
-                Peer {
-                    weight: get_weight(&public),
-                    last_contact: now,
-                    logical: *logical,
-                    version: Version::unknown(),
-                },
-            );
-        }
-        Ok(Network {
-            peers,
-            socket,
-            my_public,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            logical,
+            public,
+            private,
+            socket: Arc::new(UdpSocket::bind(logical.to_socket_addr()).await?),
+            peers: CenterMap::new(get_weight(&public), half_max_peers),
             initial_peers,
             get_weight,
         })
     }
 
-    fn broadcast_bytes(&mut self, bytes: &[u8]) {
-        let num_peers = fanout(self.peers.len());
-        let mut rng = rand::thread_rng();
-        let mut peer_count = self.peers.len();
-        let now = Slot::now();
-        for _ in 0..num_peers {
-            let i = rng.gen_range(0..peer_count);
-            let peer = &self.peers[i];
-            if now.saturating_sub(peer.last_contact) >= PEER_TIMEOUT {
-                self.peers.remove_index(i);
-                peer_count -= 1;
-                continue;
-            }
-            _ = self.socket.send_to(&bytes, peer.logical);
-        }
-    }
-
-    fn on_telemetry(&mut self, tel: Telemetry) -> bool {
+    fn on_telemetry(&mut self, from: Public, tel: Telemetry) -> bool {
         if !tel.version.is_compatible(VERSION) {
             return false;
         }
-        if tel.verify().is_err() {
-            return false;
-        }
 
         let now = Slot::now();
-        match self.peers.get_mut(&tel.public) {
+        match self.peers.get_mut(&from) {
             Some(peer) => {
                 if now.saturating_sub(peer.last_contact) >= PEER_UPDATE {
                     peer.version = tel.version;
@@ -100,44 +80,101 @@ impl Network {
                 }
             }
             None => self.peers.insert(
-                tel.public,
+                from,
                 Peer {
                     version: tel.version,
                     logical: tel.logical,
-                    weight: (self.get_weight)(&tel.public),
+                    weight: (self.get_weight)(&from),
                     last_contact: now,
                 },
             ),
         }
     }
 
-    fn on_message(&mut self, msg: Message) -> bool {
-        match msg {
-            Message::Telemetry(tel) => self.on_telemetry(tel),
+    fn broadcast_fanout(&mut self, msg: Arc<Vec<u8>>) {
+        let mut peer_count = self.peers.len();
+        let mut broadcast_left = fanout(peer_count);
+        let mut rng = rand::thread_rng();
+        let now = Slot::now();
+        while broadcast_left > 0 && peer_count > 0 {
+            let i = rng.gen_range(0..peer_count);
+            let peer = &self.peers[i];
+            if now.saturating_sub(peer.last_contact) >= PEER_TIMEOUT {
+                self.peers.remove_index(i);
+                peer_count -= 1;
+                continue;
+            }
+            let logical = peer.logical;
+            let socket = self.socket.clone();
+            let msg = msg.clone();
+            tokio::spawn(async move {
+                _ = socket.send_to(&msg, logical.to_socket_addr()).await;
+            });
+            broadcast_left -= 1;
         }
     }
 
-    pub fn run(mut self) -> Result<(), Error> {
+    fn on_bytes(&mut self, bytes: &[u8]) {
+        let msg: Msg = match bincode::deserialize(bytes) {
+            Ok(msg) => msg,
+            Err(_) => return,
+        };
+        let hash = match msg.data {
+            MsgData::Telemetry(tel) => tel.hash(),
+        };
+        if msg.from.verify(&hash, &msg.signature).is_err() {
+            return;
+        }
+        let should_broadcast = match msg.data {
+            MsgData::Telemetry(tel) => self.on_telemetry(msg.from, tel),
+        };
+        if should_broadcast {
+            self.broadcast_fanout(Arc::new(bincode::serialize(&msg).unwrap()));
+        }
+    }
+
+    fn on_interval(&mut self) {
+        let tel = Telemetry {
+            logical: self.logical,
+            version: VERSION,
+            slot: Slot::now(),
+        };
+        let msg = Arc::new(bincode::serialize(&Msg {
+            from: self.public,
+            signature: self.private.sign(&tel.hash()),
+            data: MsgData::Telemetry(tel),
+        }).unwrap());
+        if self.peers.len() == 0 {
+            for &logical in &self.initial_peers {
+                let socket = self.socket.clone();
+                let msg = msg.clone();
+                tokio::spawn(async move {
+                    _ = socket.send_to(&msg, logical.to_socket_addr()).await;
+                });
+            }
+            return;
+        }
+        self.broadcast_fanout(msg);
+    }
+
+    pub async fn run(mut self) -> Result<(), Error> {
+        let mut interval = tokio::time::interval(
+            Duration::from_secs(PEER_UPDATE)
+        );
         loop {
             let mut buf = [0; MTU];
-            let n = match self.socket.recv_from(&mut buf) {
-                Ok((n, _)) => n,
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::WouldBlock => continue,
-                    std::io::ErrorKind::Interrupted => continue,
-                    _ => {
-                        return Err(Error::from(e));
-                    }
-                },
-            };
-            let bytes = &buf[..n];
-            let msg: Message = match bincode::deserialize(bytes) {
-                Ok(msg) => msg,
-                Err(_) => continue,
-            };
-            let should_broadcast = self.on_message(msg);
-            if should_broadcast {
-                self.broadcast_bytes(bytes);
+            tokio::select! {
+                _ = interval.tick() => self.on_interval(),
+                v = self.socket.recv_from(&mut buf) => match v {
+                    Ok((n, _)) => self.on_bytes(&buf[..n]),
+                    Err(e) => match e.kind() {
+                        std::io::ErrorKind::WouldBlock => continue,
+                        std::io::ErrorKind::Interrupted => continue,
+                        _ => {
+                            return Err(Error::from(e));
+                        }
+                    },
+                }
             }
         }
     }

@@ -33,6 +33,6 @@ impl Seed {
         let mut buf = [0u8; Self::LEN + 4];
         buf[..Self::LEN].copy_from_slice(&self.0);
         buf[Self::LEN..].copy_from_slice(&index.to_be_bytes());
-        Private(Hash::of_slice(&buf).to_bytes())
+        Private(Hash::digest(&buf).to_bytes())
     }
 }

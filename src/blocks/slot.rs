@@ -24,14 +24,6 @@ impl Slot {
     pub fn saturating_sub(self, other: Slot) -> u64 {
         self.0.saturating_sub(other.0)
     }
-    pub fn elapsed(self) -> Option<u64> {
-        let now = Slot::now();
-        if self > now {
-            None
-        } else {
-            Some(now - self)
-        }
-    }
     pub fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }

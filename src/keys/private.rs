@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn signing() {
-        let hash = Hash::of_slice(&[1, 2, 3, 4, 5]);
+        let hash = Hash::digest(&[1, 2, 3, 4, 5]);
         let private = Seed::random().derive(0);
         let public = private.to_public();
         let signature = private.sign(&hash);

@@ -67,7 +67,7 @@ impl Bank {
                 Ok(())
             })?;
         }
-        let rep = self.update_account(&tx.from, |a| {
+        self.update_account(&tx.from, |a| {
             if a.nonce != tx.nonce || a.latest_balance <= tx.amount || a.batch == batch {
                 return Err(()); // Return an error if the nonce, balance, or batch doesn't match
             }
@@ -78,13 +78,8 @@ impl Bank {
             a.nonce += 1; // Increment the account nonce
             a.latest_balance -= tx.amount; // Deduct the transaction amount from the account balance
             a.batch = batch; // Update the account batch
-            Ok(a.rep) // Return the account representative
+            Ok(()) 
         })?;
-        self.update_account(&rep, |a| {
-            a.weight -= tx.amount; // Deduct the transaction amount from the representative's weight
-            Ok(())
-        })
-        .unwrap();
         Ok(())
     }
 
@@ -93,20 +88,11 @@ impl Bank {
         if tx.kind == TxKind::ChangeRepresentative {
             return; // Skip processing for change representative transactions
         }
-        let mut rep = Public::zero();
         self.insert_or_update_account(
             &tx.to,
             || Account::with_latest_balance(tx.amount), // Create a new account with the transaction amount as the latest balance
             |a| {
                 a.latest_balance += tx.amount; // Add the transaction amount to the account balance
-                rep = a.rep; // Store the account representative
-            },
-        );
-        self.insert_or_update_account(
-            &rep,
-            || Account::with_weight(tx.amount), // Create a new account with the transaction amount as the weight
-            |a| {
-                a.weight += tx.amount; // Add the transaction amount to the representative's weight
             },
         );
     }
@@ -139,16 +125,28 @@ impl Bank {
     fn finalize_transaction(&self, tx: &Tx) {
         match tx.kind {
             TxKind::Normal => {
-                self.update_account(&tx.from, |a| {
-                    a.finalized_balance += tx.amount; // Add the transaction amount to the sender's finalized balance
+                let from_rep = self.update_account(&tx.from, |a| {
+                    a.finalized_balance -= tx.amount; // Deduct the transaction amount from the sender's finalized balance
+                    Ok(a.rep)
+                })
+                .unwrap();
+                let to_rep = self.update_account(&tx.to, |a| {
+                    a.finalized_balance += tx.amount; // Add the transaction amount to the receiver's finalized balance
+                    Ok(a.rep)
+                })
+                .unwrap();
+                self.update_account(&from_rep, |a| {
+                    a.weight -= tx.amount; // Deduct the transaction amount from the representative's weight
                     Ok(())
                 })
                 .unwrap();
-                self.update_account(&tx.to, |a| {
-                    a.finalized_balance -= tx.amount; // Deduct the transaction amount from the receiver's finalized balance
-                    Ok(())
-                })
-                .unwrap();
+                self.insert_or_update_account(
+                    &to_rep,
+                    || Account::with_weight(tx.amount), // Create a new account with the transaction amount as the weight
+                    |a| {
+                        a.weight += tx.amount; // Add the transaction amount to the representative's weight
+                    },
+                );
             }
             TxKind::ChangeRepresentative => {
                 let (prev_rep, finalized_balance) = self.update_account(
