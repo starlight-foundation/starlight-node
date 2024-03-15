@@ -1,20 +1,20 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
+mod difficulty;
 mod encoding;
+mod hash;
 mod private;
 mod public;
 mod seed;
 mod signature;
-mod hash;
-mod difficulty;
 mod work;
 
+pub use difficulty::Difficulty;
 pub use encoding::{deserialize_from_str, expect_len, to_hex, to_hex_lower};
+pub use hash::{Hash, HashBuilder};
 pub use private::Private;
 pub use public::Public;
 pub use seed::Seed;
 pub use signature::Signature;
-pub use hash::{Hash, HashBuilder};
-pub use difficulty::Difficulty;
 pub use work::Work;
 
 #[cfg(test)]

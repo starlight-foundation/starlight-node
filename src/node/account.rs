@@ -7,21 +7,33 @@ use super::Batch;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Account {
-    pub(crate) batch: Batch,
-    pub(crate) latest_balance: Amount,
-    pub(crate) finalized_balance: Amount,
-    pub(crate) nonce: u64,
-    pub(crate) rep: Public,
+    pub batch: Batch,
+    pub latest_balance: Amount,
+    pub finalized_balance: Amount,
+    pub weight: Amount,
+    pub nonce: u64,
+    pub rep: Public,
 }
 
 impl Account {
-    pub(crate) fn new(moving_balance: Amount) -> Self {
+    pub fn with_weight(weight: Amount) -> Self {
         Self {
-            latest_balance: moving_balance,
+            weight,
+            latest_balance: Amount::zero(),
             finalized_balance: Amount::zero(),
             batch: Batch::null(),
             nonce: 0,
-            rep: Public::burn(),
+            rep: Public::zero(),
+        }
+    }
+    pub fn with_latest_balance(latest_balance: Amount) -> Self {
+        Self {
+            latest_balance,
+            finalized_balance: Amount::zero(),
+            weight: Amount::zero(),
+            batch: Batch::null(),
+            nonce: 0,
+            rep: Public::zero(),
         }
     }
 }
@@ -39,9 +51,10 @@ impl leapfrog::Value for Account {
         Self {
             latest_balance: Amount::from_raw(u64::MAX),
             finalized_balance: Amount::zero(),
+            weight: Amount::zero(),
             batch: Batch::null(),
             nonce: 0,
-            rep: Public::burn(),
+            rep: Public::zero(),
         }
     }
 
@@ -49,9 +62,10 @@ impl leapfrog::Value for Account {
         Self {
             latest_balance: Amount::from_raw(u64::MAX - 1),
             finalized_balance: Amount::zero(),
+            weight: Amount::zero(),
             batch: Batch::null(),
             nonce: 0,
-            rep: Public::burn(),
+            rep: Public::zero(),
         }
     }
 }

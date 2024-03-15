@@ -1,6 +1,6 @@
 use crate::{
-    blocks::{Slot, Transaction, Vote},
-    keys::{Public, Signature, Hash, HashBuilder},
+    blocks::{Slot, Tx, Vote},
+    keys::{Hash, HashBuilder, Public, Signature},
 };
 
 pub struct Block {
@@ -8,7 +8,7 @@ pub struct Block {
     pub previous: Hash,
     pub leader: Public,
     pub signature: Signature,
-    pub transactions: Box<[Transaction]>,
+    pub transactions: Box<[Tx]>,
     pub votes: Box<[Vote]>,
 }
 

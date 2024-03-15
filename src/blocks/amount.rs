@@ -27,6 +27,9 @@ impl Amount {
     pub const fn initial_supply() -> Self {
         Amount(i64::MAX as u64)
     }
+    pub const fn max() -> Self {
+        Amount(u64::MAX)
+    }
     pub const fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }

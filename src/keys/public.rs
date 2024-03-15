@@ -1,7 +1,7 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
 use super::signature::Signature;
-use crate::bail;
 use super::Hash;
+use crate::bail;
 use crate::error;
 use crate::hexify;
 use crate::node::Error;
@@ -144,14 +144,10 @@ impl Public {
     }
 
     fn checksum(&self) -> [u8; 5] {
-        PARAMS
-            .hash(&self.0)
-            .as_bytes()
-            .try_into()
-            .unwrap()
+        PARAMS.hash(&self.0).as_bytes().try_into().unwrap()
     }
 
-    pub fn burn() -> Self {
+    pub fn zero() -> Self {
         Self([0u8; 32])
     }
 
@@ -159,7 +155,9 @@ impl Public {
         let result = self.dalek_key();
 
         match result {
-            Ok(key) => key.verify(hash.as_bytes(), &signature.internal()?).or(Err(())),
+            Ok(key) => key
+                .verify(hash.as_bytes(), &signature.internal()?)
+                .or(Err(())),
             // We're returning false here because someone we can be given a bad public key,
             // but since we're not checking the key for how valid it is, only the signature,
             // we just say that it does not pass validation.

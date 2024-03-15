@@ -9,7 +9,6 @@ impl Batch {
     }
 }
 
-
 pub struct BatchFactory(AtomicU64);
 
 impl BatchFactory {
@@ -20,4 +19,3 @@ impl BatchFactory {
         Batch(self.0.fetch_add(1, Ordering::Relaxed))
     }
 }
-
