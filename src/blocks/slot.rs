@@ -1,8 +1,8 @@
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
-const GENESIS_UNIX_TIMESTAMP: u64 = 1710290840;
+const GENESIS_TIME_MS: u64 = 1710290840 * 1000;
 const SLOT_TIME_MS: u64 = 500;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
@@ -12,11 +12,14 @@ impl Slot {
         Slot(0)
     }
     pub fn now() -> Slot {
-        let genesis_ms = GENESIS_UNIX_TIMESTAMP * 1000;
-        let now_ms = SystemTime::now().duration_since(
-            SystemTime::UNIX_EPOCH
-        ).unwrap().as_millis() as u64;
-        Slot((now_ms - genesis_ms) / SLOT_TIME_MS)
+        let now_ms = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        Slot(now_ms.saturating_sub(GENESIS_TIME_MS) / SLOT_TIME_MS)
+    }
+    pub fn previous(self) -> Self {
+        Self(self.0.saturating_sub(1))
     }
     pub fn saturating_sub(self, other: Slot) -> u64 {
         self.0.saturating_sub(other.0)
@@ -29,6 +32,12 @@ impl Slot {
             Some(now - self)
         }
     }
+    pub fn to_bytes(self) -> [u8; 8] {
+        self.0.to_le_bytes()
+    }
+    pub fn from_bytes(self, bytes: [u8; 8]) -> Self {
+        Self(u64::from_le_bytes(bytes))
+    }
 }
 
 impl std::ops::Sub for Slot {
@@ -38,8 +47,6 @@ impl std::ops::Sub for Slot {
         self.0 - other.0
     }
 }
-
-
 
 impl PartialEq for Slot {
     fn eq(&self, other: &Self) -> bool {

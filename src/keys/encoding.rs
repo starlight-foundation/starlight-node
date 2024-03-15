@@ -1,9 +1,7 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
+use crate::node::Error;
 use crate::{bail, error};
-use crate::error::Error;
 use bitvec::prelude::*;
-use blake2::digest::{Update, VariableOutput};
-use blake2::{Blake2b512, Blake2bVar};
 use serde::{Deserialize, Deserializer};
 use std::str::FromStr;
 
@@ -59,14 +57,6 @@ where
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     Ok(T::from_str(s.as_str()).map_err(serde::de::Error::custom)?)
-}
-
-pub fn blake2b<const S: usize>(data: &[u8]) -> [u8; S] {
-    let mut blake = Blake2bVar::new(S).expect("Output size was zero");
-    let mut v = [0u8; S];
-    blake.update(&data);
-    blake.finalize_variable(&mut v).unwrap();
-    v
 }
 
 static ALPHABET: &str = "13456789abcdefghijkmnopqrstuwxyz";
@@ -133,7 +123,7 @@ macro_rules! hexify {
         }
 
         impl ::std::str::FromStr for $struct {
-            type Err = crate::error::Error;
+            type Err = crate::node::Error;
 
             fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 use ::std::convert::TryFrom;
@@ -166,7 +156,7 @@ macro_rules! hexify {
         }
 
         impl ::std::convert::TryFrom<&[u8]> for $struct {
-            type Error = crate::error::Error;
+            type Error = crate::node::Error;
 
             fn try_from(v: &[u8]) -> std::result::Result<Self, Self::Error> {
                 Ok(Self(<[u8; Self::LEN]>::try_from(v)?))
@@ -288,7 +278,12 @@ mod tests {
 
 pub fn expect_len(got_len: usize, expected_len: usize, msg: &str) -> Result<(), Error> {
     if got_len != expected_len {
-        bail!("wrong length; expected: {}, found: {}: {}", expected_len, got_len, msg);
+        bail!(
+            "wrong length; expected: {}, found: {}: {}",
+            expected_len,
+            got_len,
+            msg
+        );
     }
     Ok(())
 }

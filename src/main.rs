@@ -1,11 +1,10 @@
-use keys::seed::Seed;
+use crate::keys::Seed;
 
-mod keys;
-mod error;
-mod node;
 mod blocks;
-mod pow;
+mod keys;
 mod network;
+mod node;
+mod rpc;
 
 fn main() {
     let seed = Seed::random();

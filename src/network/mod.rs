@@ -1,13 +1,13 @@
 mod center_map;
-mod network;
-mod version;
-mod telemetry;
-mod peer;
 mod logical;
+mod network;
+mod peer;
+mod telemetry;
+mod version;
 
 pub use center_map::{CenterMap, CenterMapValue};
-pub use network::Network;
 pub(crate) use logical::Logical;
-pub(crate) use version::Version;
-pub(crate) use telemetry::Telemetry;
+pub use network::Network;
 pub(crate) use peer::Peer;
+pub(crate) use telemetry::Telemetry;
+pub(crate) use version::Version;

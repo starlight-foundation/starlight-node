@@ -1,14 +1,14 @@
 // Derived from the pow module of github.com/feeless/feeless@978eba7.
-use crate::error::Error;
 use crate::error;
 use crate::keys::{deserialize_from_str, expect_len, to_hex};
+use crate::node::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use std::str::FromStr;
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, Copy)]
 pub struct Difficulty(u64);
 
 impl Difficulty {
@@ -26,9 +26,7 @@ impl Difficulty {
     }
 
     pub fn from_be_slice(s: &[u8]) -> Result<Self, Error> {
-        let b = <[u8; Self::LEN]>::try_from(s).or(
-            Err(error!("wrong difficulty len"))
-        )?;
+        let b = <[u8; Self::LEN]>::try_from(s).or(Err(error!("wrong difficulty len")))?;
         Ok(Difficulty(u64::from_be_bytes(b)))
     }
 
@@ -54,9 +52,8 @@ impl FromStr for Difficulty {
     fn from_str(s: &str) -> Result<Self, Error> {
         expect_len(s.len(), Self::HEX_LEN, "Difficulty")?;
         let mut slice = [0u8; Self::LEN];
-        hex::decode_to_slice(s, &mut slice).map_err(|source| {
-            error!("can't decode hex: {}", source)
-        })?;
+        hex::decode_to_slice(s, &mut slice)
+            .map_err(|source| error!("can't decode hex: {}", source))?;
         Ok(Difficulty::from_be_slice(&slice).unwrap())
     }
 }
@@ -104,4 +101,3 @@ mod tests {
         )
     }
 }
-

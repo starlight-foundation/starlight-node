@@ -1,17 +1,21 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
-mod armor;
 mod encoding;
 mod private;
 mod public;
 mod seed;
 mod signature;
+mod hash;
+mod difficulty;
+mod work;
 
-pub use armor::Armor;
+pub use encoding::{deserialize_from_str, expect_len, to_hex, to_hex_lower};
 pub use private::Private;
 pub use public::Public;
 pub use seed::Seed;
 pub use signature::Signature;
-pub use encoding::{to_hex, to_hex_lower, expect_len, blake2b, deserialize_from_str};
+pub use hash::{Hash, HashBuilder};
+pub use difficulty::Difficulty;
+pub use work::Work;
 
 #[cfg(test)]
 mod tests {

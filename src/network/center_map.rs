@@ -1,10 +1,14 @@
-use std::{cmp::Ordering, fmt::Debug, hash::{Hash, Hasher}};
 use priority_queue::DoublePriorityQueue;
+use std::{
+    cmp::Ordering,
+    fmt::Debug,
+    hash::{Hash, Hasher},
+};
 
 // Struct to hold a key-value pair
 struct KeyValue<K, V> {
     key: K,
-    value: V
+    value: V,
 }
 
 #[derive(Debug)]
@@ -12,7 +16,7 @@ struct KeyValue<K, V> {
 struct KeyPriorityIndex<K: Ord, P: Ord> {
     key: K,
     priority: P,
-    index: usize
+    index: usize,
 }
 
 // Implement equality comparison for KeyPriorityIndex based on the key
@@ -55,9 +59,9 @@ pub trait CenterMapValue<P: Ord> {
 pub struct CenterMap<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> {
     less: DoublePriorityQueue<K, KeyPriorityIndex<K, P>>, // Set of key-value pairs less than the center
     greater: DoublePriorityQueue<K, KeyPriorityIndex<K, P>>, // Set of key-value pairs greater than the center
-    list: Vec<KeyValue<K, V>>, // List of all key-value pairs
-    center: P, // The center priority
-    max_side_len: usize // Maximum number of elements on each side of the center
+    list: Vec<KeyValue<K, V>>,                               // List of all key-value pairs
+    center: P,                                               // The center priority
+    max_side_len: usize, // Maximum number of elements on each side of the center
 }
 
 impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap<K, P, V> {
@@ -67,10 +71,10 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
             greater: DoublePriorityQueue::new(),
             list: Vec::new(),
             center,
-            max_side_len
+            max_side_len,
         }
     }
-    
+
     // Insert a new key-value pair into the CenterMap
     pub fn insert(&mut self, key: K, value: V) -> bool {
         let priority = value.priority();
@@ -79,8 +83,18 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
             if self.less.len() < self.max_side_len {
                 // If there's still room on the "less" side
                 let index = self.list.len();
-                self.list.push(KeyValue { key: key.clone(), value });
-                self.less.push(key.clone(), KeyPriorityIndex { key, priority, index });
+                self.list.push(KeyValue {
+                    key: key.clone(),
+                    value,
+                });
+                self.less.push(
+                    key.clone(),
+                    KeyPriorityIndex {
+                        key,
+                        priority,
+                        index,
+                    },
+                );
                 true
             } else {
                 // If the "less" side is full
@@ -94,7 +108,14 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
                 // Replace it with the new value in the list
                 self.list[lowest.index].value = value;
                 // Insert the new priority into the "less" set
-                self.less.push(key.clone(), KeyPriorityIndex { key, priority, index: lowest.index });
+                self.less.push(
+                    key.clone(),
+                    KeyPriorityIndex {
+                        key,
+                        priority,
+                        index: lowest.index,
+                    },
+                );
                 true
             }
         } else {
@@ -102,11 +123,21 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
             if self.greater.len() < self.max_side_len {
                 // If there's still room on the "greater" side
                 let index = self.list.len();
-                self.list.push(KeyValue { key: key.clone(), value });
-                self.greater.push(key.clone(), KeyPriorityIndex { key, priority, index });
+                self.list.push(KeyValue {
+                    key: key.clone(),
+                    value,
+                });
+                self.greater.push(
+                    key.clone(),
+                    KeyPriorityIndex {
+                        key,
+                        priority,
+                        index,
+                    },
+                );
                 true
             } else {
-                // If the "greater" side is full 
+                // If the "greater" side is full
                 let (_, greatest) = self.greater.peek_max().unwrap();
                 if priority > greatest.priority {
                     // If the new priority is larger than the largest on the "greater" side, don't insert it
@@ -117,7 +148,14 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
                 // Replace it with the new value in the list
                 self.list[greatest.index].value = value;
                 // Insert the new priority into the "greater" set
-                self.greater.push(key.clone(), KeyPriorityIndex { key, priority, index: greatest.index });
+                self.greater.push(
+                    key.clone(),
+                    KeyPriorityIndex {
+                        key,
+                        priority,
+                        index: greatest.index,
+                    },
+                );
                 true
             }
         }
@@ -125,10 +163,10 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
 
     fn update_index(&mut self, index: usize) {
         let kv = &self.list[index];
-        let kpi = KeyPriorityIndex { 
-            key: kv.key.clone(), 
-            priority: kv.value.priority(), 
-            index 
+        let kpi = KeyPriorityIndex {
+            key: kv.key.clone(),
+            priority: kv.value.priority(),
+            index,
         };
         // Insert into the appropriate set based on its priority relative to center
         if kv.value.priority() < self.center {
@@ -140,13 +178,13 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
 
     pub fn remove_index(&mut self, index: usize) -> V {
         // Remove the KeyValue at the found index and return its value
-        let KeyValue { key, value} = self.list.swap_remove(index);
+        let KeyValue { key, value } = self.list.swap_remove(index);
         if value.priority() < self.center {
             self.less.remove(&key);
         } else {
             self.greater.remove(&key);
         }
-        
+
         // If there's still an element at the removal index after swapping, update its index
         if index < self.list.len() {
             self.update_index(index);
@@ -161,10 +199,10 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
             Some((_, kpi)) => Some(kpi),
             None => match self.greater.remove(&key) {
                 Some((_, kpi)) => Some(kpi),
-                None => None
-            }
+                None => None,
+            },
         }?; // Return None if not found in either set
-        
+
         // Remove the KeyValue at the found index and return its value
         let KeyValue { value, .. } = self.list.swap_remove(index);
 
@@ -179,7 +217,7 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
     pub fn len(&self) -> usize {
         return self.list.len();
     }
-    
+
     pub fn get(&self, key: &K) -> Option<&V> {
         if let Some((_, kpi)) = self.less.get(key) {
             Some(&self.list[kpi.index].value)
@@ -265,15 +303,19 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
     }
 }
 
-impl<K: Hash + Eq + Clone + Ord + Debug, P: Ord, V: CenterMapValue<P> + Debug> std::fmt::Debug for CenterMap<K, P, V> {
+impl<K: Hash + Eq + Clone + Ord + Debug, P: Ord, V: CenterMapValue<P> + Debug> std::fmt::Debug
+    for CenterMap<K, P, V>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
-         .entries(self.list.iter().map(|kv| (&kv.key, &kv.value)))
-         .finish()
+            .entries(self.list.iter().map(|kv| (&kv.key, &kv.value)))
+            .finish()
     }
 }
 
-impl<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> std::ops::Index<usize> for CenterMap<K, P, V> {
+impl<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> std::ops::Index<usize>
+    for CenterMap<K, P, V>
+{
     type Output = V;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -281,15 +323,17 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> std::ops::Index<u
     }
 }
 
-impl<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> std::ops::IndexMut<usize> for CenterMap<K, P, V> {
+impl<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> std::ops::IndexMut<usize>
+    for CenterMap<K, P, V>
+{
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.list[index].value
     }
 }
 
-impl<P: Ord> CenterMapValue<P> for P {
+impl<P: Ord + Clone> CenterMapValue<P> for P {
     fn priority(&self) -> P {
-        *self
+        self.clone()
     }
 }
 
@@ -369,4 +413,3 @@ mod tests {
         assert_eq!(map[1], 20);
     }
 }
-

@@ -1,78 +1,116 @@
-use crate::blocks::Transaction;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use super::{Account, Batch, BatchFactory, Block};
+use crate::blocks::{Amount, Slot, Transaction};
+use crate::keys::Public;
 use leapfrog::LeapMap;
-use crate::keys::public::Public;
-use super::{Account, Block};
 
 pub struct Bank {
     accounts: LeapMap<Public, Account>,
+    batch_factory: BatchFactory
 }
 
 impl Bank {
     pub fn new() -> Self {
         Self {
             accounts: LeapMap::new(),
+            batch_factory: BatchFactory::new()
         }
     }
 
-    fn update_account<T, F: FnMut(&mut Account) -> Result<T, ()>>(&self, key: Public, mut f: F) -> Result<T, ()> {
-        let mut a = match self.accounts.get_mut(&key) {
-            Some(a) => a,
-            None => return Err(()),
-        };
+    /// Get a globally unique batch ID.
+    pub fn new_batch(&self) -> Batch {
+        self.batch_factory.next()
+    }
+    
+
+    /// Update an account by applying the provided function
+    fn update_account<T, F: FnMut(&mut Account) -> Result<T, ()>>(
+        &self,
+        key: &Public,
+        mut f: F,
+    ) -> Result<T, ()> {
+        let mut a = self.accounts.get_mut(key).ok_or(())?;
         let mut r = Err(());
-        a.update(|a| {
-            r = f(a);
-        }).unwrap();
+        a.update(|a| r = f(a)).unwrap();
         r
     }
 
-    fn insert_or_update_account<F: FnMut(&mut Account)>(&self, key: Public, value: Account, mut f: F) {
+    /// Insert a new account or update an existing one
+    fn insert_or_update_account<F: FnMut(&mut Account)>(&self, key: Public, value: Account, f: F) {
         loop {
-            match self.accounts.get_mut(&key) {
-                Some(a) => a,
-                None => match self.accounts.try_insert(key, value) {
-                    Some(_) => continue,
-                    None => return,
-                }
-            }.update(f).unwrap();
-            return;
+            if let Some(mut a) = self.accounts.get_mut(&key) {
+                a.update(f).unwrap();
+                return;
+            } else if self.accounts.try_insert(key, value).is_none() {
+                return;
+            }
         }
     }
 
-    fn process_send(&self, tr: &Transaction, slot: u64) -> Result<(), ()> {
-        self.update_account(tr.from, |a| {
-            if a.nonce != tr.nonce
-            || a.balance <= tr.amount
-            || a.slot >= slot {
+    /// Process the send half of a transaction
+    fn process_send(&self, tr: &Transaction, batch: Batch) -> Result<(), ()> {
+        self.update_account(&tr.from, |a| {
+            if a.nonce != tr.nonce || a.latest_balance <= tr.amount || a.batch == batch {
                 return Err(());
             }
-            let new_balance = a.balance - tr.amount;
+            let new_balance = a.latest_balance - tr.amount;
             if new_balance != tr.balance {
                 return Err(());
             }
             a.nonce += 1;
-            a.balance -= tr.amount;
-            a.slot = slot;
+            a.latest_balance -= tr.amount;
+            a.batch = batch;
             Ok(())
         })
     }
 
+    /// Process the receive half of the transaction
     fn process_recv(&self, tr: &Transaction) {
         let value = Account::new(tr.amount);
         self.insert_or_update_account(tr.to, value, |a| {
-            a.balance += tr.amount;
+            a.latest_balance += tr.amount;
         });
     }
 
-    pub fn process_transaction(&self, tr: &Transaction, slot: u64) -> Result<(), ()> {
-        self.process_send(tr, slot)?;
+    fn revert_transaction(&self, tr: &Transaction) {
+        self.update_account(&tr.from, |a| {
+            a.nonce -= 1;
+            a.latest_balance += tr.amount;
+            Ok(())
+        }).unwrap();
+        let remove_account = self.update_account(&tr.to, |a| {
+            a.latest_balance -= tr.amount;
+            Ok(a.latest_balance == Amount::zero() && a.nonce == 0)
+        }).unwrap();
+        if remove_account {
+            self.accounts.remove(&tr.to);
+        }
+    }
+
+    fn finalize_transaction(&self, tr: &Transaction) {
+        self.update_account(&tr.from, |a| {
+            a.finalized_balance += tr.amount;
+            Ok(())
+        }).unwrap();
+        self.update_account(&tr.to, |a| {
+            a.finalized_balance -= tr.amount;
+            Ok(())
+        }).unwrap();
+    }
+
+    /// Process a transaction
+    pub fn process_transaction(&self, tr: &Transaction, batch: Batch) -> Result<(), ()> {
+        self.process_send(tr, batch)?;
         self.process_recv(tr);
         Ok(())
     }
 
+    /// Process a block of transactions
     pub fn process_block(&self, block: &Block) -> Result<(), ()> {
+        let batch = self.new_batch();
         for tr in block.transactions.iter() {
-            self.process_send(tr, block.slot)?;
+            self.process_send(tr, batch)?;
         }
         for tr in block.transactions.iter() {
             self.process_recv(tr);
@@ -80,14 +118,29 @@ impl Bank {
         Ok(())
     }
 
-    pub fn get_balance_and_nonce(&self, public: Public) -> (u64, u64) {
-        match self.accounts.get(&public) {
-            Some(mut a) => {
-                let a = a.value().unwrap();
-                (a.balance, a.nonce)
-            }
-            None => (0, 0),
+    /// Revert a block of transactions
+    pub fn revert_block(&self, block: &Block) -> Result<(), ()> {
+        for tr in block.transactions.iter() {
+            self.revert_transaction(tr);
         }
+        Ok(())
+    }
+
+    pub fn finalize_block(&self, block: &Block) -> Result<(), ()> {
+        for tr in block.transactions.iter() {
+            self.finalize_transaction(tr);
+        }
+        Ok(())
+    }
+
+    /// Get the latest finalized balance, nonce, and slot for an account
+    pub fn get_latest_finalized_and_nonce(&self, public: Public) -> (Amount, Amount, u64) {
+        self.accounts
+            .get(&public)
+            .map(|mut a| {
+                let a = a.value().unwrap();
+                (a.latest_balance, a.finalized_balance, a.nonce)
+            })
+            .unwrap_or((Amount::zero(), Amount::zero(), 0))
     }
 }
-

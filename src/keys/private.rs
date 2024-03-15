@@ -1,20 +1,23 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
+use super::Hash;
 use crate::hexify;
 use crate::keys::public::Public;
 use crate::keys::signature::Signature;
-use ed25519_dalek_blake2_feeless::{
-    ExpandedSecretKey, PublicKey, SecretKey,
-};
+use ed25519_dalek_blake2_feeless::{ExpandedSecretKey, PublicKey, SecretKey};
 use rand::RngCore;
 
 /// 256 bit private key which can generate a public key.
 #[derive(Clone, Copy)]
-pub struct Private(pub [u8; 32]);
+pub struct Private(pub(crate) [u8; 32]);
 
 hexify!(Private, "private key");
 
 impl Private {
     pub(crate) const LEN: usize = 32;
+
+    pub(crate) const fn zero() -> Self {
+        Self([0u8; 32])
+    }
 
     pub fn random() -> Self {
         let mut private = Private::zero();
@@ -52,30 +55,26 @@ impl Private {
         self.to_public().to_address()
     }
 
-    pub fn sign(&self, message: &[u8]) -> Signature {
+    pub fn sign(&self, hash: &Hash) -> Signature {
         let dalek = self.to_ed25519_dalek();
         let public = PublicKey::from(&dalek);
         let expanded_secret = ExpandedSecretKey::from(&dalek);
-        let internal_signed = expanded_secret.sign(message, &public);
+        let internal_signed = expanded_secret.sign(hash.as_bytes(), &public);
         Signature::from_bytes(internal_signed.to_bytes())
-    }
-
-    // Not public because we don't want users to accidentally generate this key.
-    fn zero() -> Self {
-        Self([0u8; 32])
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::Hash;
     use crate::keys::seed::Seed;
 
     #[test]
     fn signing() {
-        let message = [1, 2, 3, 4, 5];
+        let hash = Hash::of_slice(&[1, 2, 3, 4, 5]);
         let private = Seed::random().derive(0);
         let public = private.to_public();
-        let signature = private.sign(&message);
-        assert!(public.verify(&message, &signature).is_ok());
+        let signature = private.sign(&hash);
+        assert!(public.verify(&hash, &signature).is_ok());
     }
 }

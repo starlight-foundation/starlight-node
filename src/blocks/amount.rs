@@ -1,5 +1,5 @@
 use std::fmt;
-use std::ops::{Add, Sub, Mul, Div, AddAssign, SubAssign, MulAssign, DivAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,14 +18,20 @@ impl Amount {
     pub const fn to_raw(self) -> u64 {
         self.0
     }
-    pub const fn to_unit(self) -> f32 {
+    pub fn to_unit(self) -> f32 {
         self.0 as f32 / UNIT as f32
     }
-    pub const fn from_unit(value: f32) -> Self {
+    pub fn from_unit(value: f32) -> Self {
         Amount((value * UNIT as f32) as u64)
     }
     pub const fn initial_supply() -> Self {
         Amount(i64::MAX as u64)
+    }
+    pub const fn to_bytes(self) -> [u8; 8] {
+        self.0.to_le_bytes()
+    }
+    pub const fn from_bytes(bytes: [u8; 8]) -> Self {
+        Self(u64::from_le_bytes(bytes))
     }
 }
 

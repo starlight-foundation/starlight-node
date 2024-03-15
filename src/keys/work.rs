@@ -1,8 +1,8 @@
 // Derived from the pow module of github.com/feeless/feeless@978eba7.
-use crate::blocks::Hash;
-use crate::hexify;
-use crate::keys::blake2b;
 use super::Difficulty;
+use super::Hash;
+use crate::hexify;
+use once_cell::sync::Lazy;
 use rand::RngCore;
 use std::convert::TryFrom;
 
@@ -11,6 +11,13 @@ use std::convert::TryFrom;
 pub struct Work(pub [u8; 8]);
 
 hexify!(Work, "work");
+
+static PARAMS: Lazy<blake2b_simd::Params> = Lazy::new(|| {
+    let params = blake2b_simd::Params::new();
+    let mut params = blake2b_simd::Params::new();
+    params.hash_length(8);
+    params
+});
 
 impl Work {
     pub const LEN: usize = 8;
@@ -26,16 +33,14 @@ impl Work {
     }
 
     pub fn hash(work_and_subject: &[u8]) -> [u8; Self::LEN] {
-        blake2b::<{Self::LEN}>(work_and_subject)
+        PARAMS.hash(work_and_subject).as_bytes().try_into().unwrap()
     }
 
     /// Block and generate forever until we find a solution.
     pub fn generate(subject: &Hash, threshold: Difficulty) -> Self {
         let mut work_and_subject = [0u8; 40];
         // We can place the subject in the second part of the slice which will not change.
-        &mut work_and_subject[Self::LEN..].copy_from_slice(&subject.0);
-
-        let mut difficulty: Difficulty = Difficulty::new(0);
+        work_and_subject[Self::LEN..].copy_from_slice(subject.as_bytes());
 
         // Fill the first 8 bytes with the random work.
         let work_slice = &mut work_and_subject[0..Self::LEN];
@@ -81,7 +86,7 @@ impl Work {
         reversed_work.reverse();
 
         work_and_subject[0..Self::LEN].copy_from_slice(&reversed_work);
-        work_and_subject[Self::LEN..].copy_from_slice(&subject.0);
+        work_and_subject[Self::LEN..].copy_from_slice(subject.as_bytes());
         let hash = Self::hash(&work_and_subject);
         Difficulty::from_le_fixed(&hash)
     }
@@ -90,7 +95,7 @@ impl Work {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Seed;
+    use crate::keys::Seed;
     use std::str::FromStr;
 
     #[test]
@@ -134,7 +139,7 @@ mod tests {
             let difficulty = work.difficulty(&hash);
             assert_eq!(difficulty, expected_difficulty, "{:?}", &fixture);
             assert_eq!(
-                work.verify(&hash, &threshold).is_ok(),
+                work.verify(&hash, threshold).is_ok(),
                 *is_enough_work,
                 "{:?}",
                 &fixture
@@ -153,11 +158,10 @@ mod tests {
         .unwrap();
         dbg!(&threshold);
 
-        let hash = Hash(Seed::zero().derive(0).to_public().0);
+        let hash = Hash::random();
         dbg!(&hash);
-        let work = Work::generate(&hash, &threshold);
+        let work = Work::generate(&hash, threshold);
         dbg!(&work);
-        assert!(work.verify(&hash, &threshold).is_ok());
+        assert!(work.verify(&hash, threshold).is_ok());
     }
 }
-

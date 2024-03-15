@@ -1,9 +1,8 @@
+use super::Hash;
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
 use crate::hexify;
 use crate::keys::private::Private;
 use rand::RngCore;
-
-use super::encoding::blake2b;
 
 /// 256 bit seed used to derive multiple addresses.
 ///
@@ -34,6 +33,6 @@ impl Seed {
         let mut buf = [0u8; Self::LEN + 4];
         buf[..Self::LEN].copy_from_slice(&self.0);
         buf[Self::LEN..].copy_from_slice(&index.to_be_bytes());
-        Private(blake2b::<{Self::LEN}>(&buf))
+        Private(Hash::of_slice(&buf).to_bytes())
     }
 }

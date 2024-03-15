@@ -1,20 +1,20 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
+use super::signature::Signature;
 use crate::bail;
+use super::Hash;
 use crate::error;
-use crate::error::Error;
 use crate::hexify;
-use blake2::digest::Update;
-use blake2::digest::VariableOutput;
-use blake2::Blake2bVar;
+use crate::node::Error;
+use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
+use once_cell::sync::Lazy;
 use primitive_types::U512;
 use serde::{Deserialize, Deserializer, Serializer};
-use super::signature::Signature;
 
 /// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
 #[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub struct Public(pub [u8; 32]);
+pub struct Public([u8; 32]);
 
 hexify!(Public, "public key");
 
@@ -37,7 +37,9 @@ fn decode_to_u512(s: &str) -> Result<U512, Error> {
 }
 
 fn is_valid(s: &str) -> bool {
-    s.starts_with("slt_") && s.chars().count() == 64 && matches!(s.chars().nth(4), Some('1') | Some('3'))
+    s.starts_with("slt_")
+        && s.chars().count() == 64
+        && matches!(s.chars().nth(4), Some('1') | Some('3'))
 }
 
 fn checksum_bytes(number: U512) -> [u8; 5] {
@@ -46,7 +48,7 @@ fn checksum_bytes(number: U512) -> [u8; 5] {
         number.byte(1),
         number.byte(2),
         number.byte(3),
-        number.byte(4)
+        number.byte(4),
     ]
 }
 
@@ -127,6 +129,12 @@ impl Public {
     }
 }
 
+static PARAMS: Lazy<Params> = Lazy::new(|| {
+    let mut params = Params::new();
+    params.hash_length(5);
+    params
+});
+
 impl Public {
     pub const LEN: usize = 32;
     const ADDRESS_CHECKSUM_LEN: usize = 5;
@@ -136,23 +144,22 @@ impl Public {
     }
 
     fn checksum(&self) -> [u8; 5] {
-        let mut check = [0u8; 5];
-        let mut blake = Blake2bVar::new(check.len()).unwrap();
-        blake.update(&self.0);
-        blake.finalize_variable(&mut check).unwrap();
-
-        check
+        PARAMS
+            .hash(&self.0)
+            .as_bytes()
+            .try_into()
+            .unwrap()
     }
 
     pub fn burn() -> Self {
         Self([0u8; 32])
     }
 
-    pub fn verify(&self, message: &[u8], signature: &Signature) -> Result<(), ()> {
+    pub fn verify(&self, hash: &Hash, signature: &Signature) -> Result<(), ()> {
         let result = self.dalek_key();
 
         match result {
-            Ok(key) => key.verify(message, &signature.internal()?).or(Err(())),
+            Ok(key) => key.verify(hash.as_bytes(), &signature.internal()?).or(Err(())),
             // We're returning false here because someone we can be given a bad public key,
             // but since we're not checking the key for how valid it is, only the signature,
             // we just say that it does not pass validation.
@@ -182,8 +189,7 @@ where
     D: Deserializer<'de>,
 {
     let s: &str = Deserialize::deserialize(deserializer)?;
-    Ok(Public::from_address(s)
-        .map_err(serde::de::Error::custom)?)
+    Ok(Public::from_address(s).map_err(serde::de::Error::custom)?)
 }
 
 #[cfg(test)]
@@ -196,8 +202,7 @@ mod tests {
     /// https://docs.nano.org/protocol-design/signing-hashing-and-key-derivation/#signing-algorithm-ed25519
     #[test]
     fn empty_private_to_public() {
-        let private_key_bytes = [0; Private::LEN];
-        let private = Private(private_key_bytes);
+        let private = Private::zero();
         let public = private.to_public();
         // If the result is...
         // 3B6A27BCCEB6A42D62A3A8D02A6F0D73653215771DE243A63AC048A18B59DA29

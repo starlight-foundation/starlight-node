@@ -1,4 +1,6 @@
-use crate::{blocks::{Hash, Difficulty, Work}, keys::{Public, Signature}};
+use crate::{
+    keys::{Public, Signature, Difficulty, Hash, HashBuilder, Work},
+};
 
 use super::Amount;
 
@@ -11,22 +13,24 @@ pub struct Transaction {
     pub amount: Amount,
     pub to: Public,
     pub work: Work,
-    pub signature: Signature
+    pub signature: Signature,
 }
 
 impl Transaction {
     pub fn verify_and_hash(&self) -> Result<Hash, ()> {
-        const TX_HASH_INPUT_SIZE: usize = std::mem::size_of::<Transaction>()
-            - std::mem::size_of::<Signature>();
-        let tx_msg: &[u8; TX_HASH_INPUT_SIZE] = unsafe { std::mem::transmute(self) };
-        let tx_hash = Hash::of_slice(tx_msg);
-        self.from.verify(&tx_hash.0, &self.signature)?;
-        const WORK_HASH_INPUT_SIZE: usize = std::mem::size_of::<u64>()
-            + std::mem::size_of::<Public>();
-        let work_msg: &[u8; WORK_HASH_INPUT_SIZE] = unsafe { std::mem::transmute(self) };
-        let work_hash = Hash::of_slice(work_msg);
-        self.work.verify(&work_hash, &Difficulty::BASE)?;
+        let (work_hash, tx_hash) = {
+            let mut hb = HashBuilder::new();
+            hb.update(&self.nonce.to_le_bytes());
+            hb.update(self.from.as_bytes());
+            let work_hash = hb.finalize();
+            hb.update(&self.balance.to_bytes());
+            hb.update(&self.amount.to_bytes());
+            hb.update(self.to.as_bytes());
+            let tx_hash = hb.finalize();
+            (work_hash, tx_hash)
+        };
+        self.work.verify(&work_hash, Difficulty::BASE)?;
+        self.from.verify(&tx_hash, &self.signature)?;
         Ok(tx_hash)
     }
 }
-

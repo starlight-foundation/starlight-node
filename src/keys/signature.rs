@@ -1,5 +1,5 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
-use crate::{error::Error, error, hexify};
+use crate::hexify;
 
 /// A ed25519+blake2 signature that can be generated with [Private](crate::Private) and
 /// checked with [Public](crate::Public).

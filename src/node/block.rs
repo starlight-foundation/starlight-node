@@ -1,23 +1,24 @@
-use crate::{blocks::{Hash, HashBuilder, Transaction, Vote}, keys::{Public, Signature}};
+use crate::{
+    blocks::{Slot, Transaction, Vote},
+    keys::{Public, Signature, Hash, HashBuilder},
+};
 
 pub struct Block {
-    pub slot: u64,
+    pub slot: Slot,
     pub previous: Hash,
     pub leader: Public,
     pub signature: Signature,
     pub transactions: Box<[Transaction]>,
-    pub votes: Box<[Vote]>
+    pub votes: Box<[Vote]>,
 }
 
 fn merkle_row(hashes: &[Hash]) -> Vec<Hash> {
     assert_eq!(hashes.len() % 2, 0);
-    let mut row = Vec::with_capacity(
-        hashes.len() / 2 + ((hashes.len() / 2) % 2)
-    );
+    let mut row = Vec::with_capacity(hashes.len() / 2 + ((hashes.len() / 2) % 2));
     for pair in hashes.chunks(2) {
         let mut hb = HashBuilder::new();
-        hb.update(&pair[0].0);
-        hb.update(&pair[1].0);
+        hb.update(&pair[0].as_bytes());
+        hb.update(&pair[1].as_bytes());
         row.push(hb.finalize());
     }
     if row.len() < row.capacity() {
@@ -40,9 +41,8 @@ impl Block {
             0 => Hash::zero(),
             1 => self.transactions[0].verify_and_hash()?,
             _ => {
-                let mut tx_hashes = Vec::with_capacity(
-                    self.transactions.len() + self.transactions.len() % 2
-                );
+                let mut tx_hashes =
+                    Vec::with_capacity(self.transactions.len() + self.transactions.len() % 2);
                 for tx in self.transactions.iter() {
                     tx_hashes.push(tx.verify_and_hash()?);
                 }
@@ -56,9 +56,7 @@ impl Block {
             0 => Hash::zero(),
             1 => self.votes[0].verify_and_hash()?,
             _ => {
-                let mut vote_hashes = Vec::with_capacity(
-                    self.votes.len() + self.votes.len() % 2
-                );
+                let mut vote_hashes = Vec::with_capacity(self.votes.len() + self.votes.len() % 2);
                 for vote in self.votes.iter() {
                     vote_hashes.push(vote.verify_and_hash()?);
                 }
@@ -70,15 +68,14 @@ impl Block {
         };
         let block_hash = {
             let mut hb = HashBuilder::new();
-            hb.update(&self.slot.to_le_bytes());
-            hb.update(&self.previous.0);
-            hb.update(&self.leader.0);
-            hb.update(&tx_hash.0);
-            hb.update(&vote_hash.0);
+            hb.update(&self.slot.to_bytes());
+            hb.update(self.previous.as_bytes());
+            hb.update(self.leader.as_bytes());
+            hb.update(tx_hash.as_bytes());
+            hb.update(vote_hash.as_bytes());
             hb.finalize()
         };
-        self.leader.verify(&block_hash.0, &self.signature)?;
+        self.leader.verify(&block_hash, &self.signature)?;
         Ok(block_hash)
     }
 }
-

@@ -1,16 +1,15 @@
-use serde::{Serialize, Deserialize};
+use super::{CenterMapValue, Logical};
+use crate::blocks::Amount;
 use crate::blocks::Slot;
 use crate::network::version::Version;
-use crate::blocks::Amount;
-use std::net::SocketAddrV4;
-use super::CenterMapValue;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub(crate) struct Peer {
     pub weight: Amount,
     pub last_contact: Slot,
-    pub address: SocketAddrV4,
-    pub version: Version
+    pub logical: Logical,
+    pub version: Version,
 }
 impl CenterMapValue<Amount> for Peer {
     fn priority(&self) -> Amount {

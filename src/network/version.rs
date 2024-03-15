@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct Version {
     major: u16,
     minor: u16,
-    patch: u16
+    patch: u16,
 }
 impl Version {
-    pub fn new(major: u16, minor: u16, patch: u16) -> Self {
+    pub const fn new(major: u16, minor: u16, patch: u16) -> Self {
         Self {
             major,
             minor,
-            patch
+            patch,
         }
     }
     pub fn is_compatible(self, other: Version) -> bool {
@@ -21,11 +21,10 @@ impl Version {
         Self {
             major: 0,
             minor: 0,
-            patch: 0
+            patch: 0,
         }
     }
     pub fn is_unknown(self) -> bool {
         self.major == 0 && self.minor == 0 && self.patch == 0
     }
 }
-

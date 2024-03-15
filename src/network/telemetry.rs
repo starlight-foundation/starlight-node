@@ -1,11 +1,10 @@
-use crate::blocks::Difficulty;
-use crate::blocks::Hash;
 use crate::blocks::Slot;
-use crate::blocks::Work;
-use crate::keys::Signature;
+use crate::keys::Difficulty;
+use crate::keys::Hash;
 use crate::keys::Public;
-use std::net::SocketAddrV4;
-use serde::{Serialize, Deserialize};
+use crate::keys::Signature;
+use crate::keys::Work;
+use serde::{Deserialize, Serialize};
 
 use super::Logical;
 use super::Version;
@@ -17,7 +16,7 @@ pub(crate) struct Telemetry {
     pub version: Version,
     pub slot: Slot,
     work: Work,
-    signature: Signature
+    signature: Signature,
 }
 
 impl Telemetry {
@@ -26,13 +25,10 @@ impl Telemetry {
             + std::mem::size_of::<Logical>()
             + std::mem::size_of::<Version>()
             + std::mem::size_of::<Slot>();
-        let msg: &[u8; MSG_SIZE] = unsafe {
-            std::mem::transmute(self)
-        };
-        let hash = Hash::of_slice(&msg);
+        let msg: &[u8; MSG_SIZE] = unsafe { std::mem::transmute(self) };
+        let hash = Hash::of_slice(msg);
         self.work.verify(&hash, Difficulty::BASE)?;
         self.public.verify(&hash, &self.signature)?;
         Ok(())
     }
 }
-
