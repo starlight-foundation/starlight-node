@@ -33,3 +33,19 @@ impl Hash {
         Self([0u8; 32])
     }
 }
+
+pub struct HashBuilder(State);
+impl HashBuilder {
+    pub fn new() -> Self {
+        Self(PARAMS.to_state())
+    }
+
+    pub fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    pub fn finalize(&self) -> Hash {
+        let mut v = [0u8; 32];
+        Hash(self.0.finalize().as_bytes().try_into().unwrap())
+    }
+}

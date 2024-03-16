@@ -10,7 +10,7 @@ use crate::{
     node::Error,
 };
 
-use super::{CenterMap, Logical, Peer, Telemetry, Version};
+use super::{CenterMap, Logical, Peer, Shred, Telemetry, Version};
 
 const VERSION: Version = Version::new(0, 1, 0);
 const MTU: usize = 1280;
@@ -20,12 +20,12 @@ fn fanout(n: usize) -> usize {
     (n as f64).powf(0.58) as usize
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone)]
 enum MsgData {
-    Telemetry(Telemetry),
+    Telemetry(Telemetry)
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Msg {
     from: Public,
     signature: Signature,
@@ -62,6 +62,29 @@ impl Network {
         })
     }
 
+    fn broadcast_fanout(&mut self, msg: Arc<Vec<u8>>) {
+        let mut peer_count = self.peers.len();
+        let mut broadcast_left = fanout(peer_count);
+        let mut rng = rand::thread_rng();
+        let now = Slot::now();
+        while broadcast_left > 0 && peer_count > 0 {
+            let i = rng.gen_range(0..peer_count);
+            let peer = &self.peers[i];
+            if now.saturating_sub(peer.last_contact) >= PEER_TIMEOUT {
+                self.peers.remove_index(i);
+                peer_count -= 1;
+                continue;
+            }
+            let logical = peer.logical;
+            let socket = self.socket.clone();
+            let msg = msg.clone();
+            tokio::spawn(async move {
+                _ = socket.send_to(&msg, logical.to_socket_addr()).await;
+            });
+            broadcast_left -= 1;
+        }
+    }
+
     fn on_telemetry(&mut self, from: Public, tel: Telemetry) -> bool {
         if !tel.version.is_compatible(VERSION) {
             return false;
@@ -91,29 +114,6 @@ impl Network {
         }
     }
 
-    fn broadcast_fanout(&mut self, msg: Arc<Vec<u8>>) {
-        let mut peer_count = self.peers.len();
-        let mut broadcast_left = fanout(peer_count);
-        let mut rng = rand::thread_rng();
-        let now = Slot::now();
-        while broadcast_left > 0 && peer_count > 0 {
-            let i = rng.gen_range(0..peer_count);
-            let peer = &self.peers[i];
-            if now.saturating_sub(peer.last_contact) >= PEER_TIMEOUT {
-                self.peers.remove_index(i);
-                peer_count -= 1;
-                continue;
-            }
-            let logical = peer.logical;
-            let socket = self.socket.clone();
-            let msg = msg.clone();
-            tokio::spawn(async move {
-                _ = socket.send_to(&msg, logical.to_socket_addr()).await;
-            });
-            broadcast_left -= 1;
-        }
-    }
-
     fn on_bytes(&mut self, bytes: &[u8]) {
         let msg: Msg = match bincode::deserialize(bytes) {
             Ok(msg) => msg,
@@ -126,7 +126,7 @@ impl Network {
             return;
         }
         let should_broadcast = match msg.data {
-            MsgData::Telemetry(tel) => self.on_telemetry(msg.from, tel),
+            MsgData::Telemetry(tel) => self.on_telemetry(msg.from, tel)
         };
         if should_broadcast {
             self.broadcast_fanout(Arc::new(bincode::serialize(&msg).unwrap()));
@@ -139,11 +139,14 @@ impl Network {
             version: VERSION,
             slot: Slot::now(),
         };
-        let msg = Arc::new(bincode::serialize(&Msg {
-            from: self.public,
-            signature: self.private.sign(&tel.hash()),
-            data: MsgData::Telemetry(tel),
-        }).unwrap());
+        let msg = Arc::new(
+            bincode::serialize(&Msg {
+                from: self.public,
+                signature: self.private.sign(&tel.hash()),
+                data: MsgData::Telemetry(tel),
+            })
+            .unwrap(),
+        );
         if self.peers.len() == 0 {
             for &logical in &self.initial_peers {
                 let socket = self.socket.clone();
@@ -158,9 +161,7 @@ impl Network {
     }
 
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut interval = tokio::time::interval(
-            Duration::from_secs(PEER_UPDATE)
-        );
+        let mut interval = tokio::time::interval(Duration::from_secs(PEER_UPDATE));
         loop {
             let mut buf = [0; MTU];
             tokio::select! {

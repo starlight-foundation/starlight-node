@@ -5,7 +5,7 @@ use leapfrog::LeapMap;
 
 pub struct Bank {
     accounts: LeapMap<Public, Account>, // A map storing accounts indexed by public keys
-    batch_factory: BatchFactory, // A factory for generating unique batch IDs
+    batch_factory: BatchFactory,        // A factory for generating unique batch IDs
 }
 
 impl Bank {
@@ -78,7 +78,7 @@ impl Bank {
             a.nonce += 1; // Increment the account nonce
             a.latest_balance -= tx.amount; // Deduct the transaction amount from the account balance
             a.batch = batch; // Update the account batch
-            Ok(()) 
+            Ok(())
         })?;
         Ok(())
     }
@@ -102,7 +102,8 @@ impl Bank {
             self.update_account(&tx.from, |a| {
                 a.nonce -= 1; // Decrement the account nonce
                 Ok(())
-            }).unwrap();
+            })
+            .unwrap();
             return;
         }
         self.update_account(&tx.from, |a| {
@@ -125,16 +126,18 @@ impl Bank {
     fn finalize_transaction(&self, tx: &Tx) {
         match tx.kind {
             TxKind::Normal => {
-                let from_rep = self.update_account(&tx.from, |a| {
-                    a.finalized_balance -= tx.amount; // Deduct the transaction amount from the sender's finalized balance
-                    Ok(a.rep)
-                })
-                .unwrap();
-                let to_rep = self.update_account(&tx.to, |a| {
-                    a.finalized_balance += tx.amount; // Add the transaction amount to the receiver's finalized balance
-                    Ok(a.rep)
-                })
-                .unwrap();
+                let from_rep = self
+                    .update_account(&tx.from, |a| {
+                        a.finalized_balance -= tx.amount; // Deduct the transaction amount from the sender's finalized balance
+                        Ok(a.rep)
+                    })
+                    .unwrap();
+                let to_rep = self
+                    .update_account(&tx.to, |a| {
+                        a.finalized_balance += tx.amount; // Add the transaction amount to the receiver's finalized balance
+                        Ok(a.rep)
+                    })
+                    .unwrap();
                 self.update_account(&from_rep, |a| {
                     a.weight -= tx.amount; // Deduct the transaction amount from the representative's weight
                     Ok(())
@@ -149,15 +152,13 @@ impl Bank {
                 );
             }
             TxKind::ChangeRepresentative => {
-                let (prev_rep, finalized_balance) = self.update_account(
-                    &tx.from,
-                    |a| {
+                let (prev_rep, finalized_balance) = self
+                    .update_account(&tx.from, |a| {
                         let prev_rep = a.rep;
                         a.rep = tx.to; // Update the account representative to the new representative
                         Ok((prev_rep, a.finalized_balance))
-                    },
-                )
-                .unwrap();
+                    })
+                    .unwrap();
                 _ = self.update_account(&prev_rep, |a| {
                     a.weight -= finalized_balance; // Deduct the finalized balance from the previous representative's weight
                     Ok(())
@@ -211,7 +212,11 @@ impl Bank {
     pub fn get_latest_finalized_and_nonce(&self, public: &Public) -> (Amount, Amount, u64) {
         match self.get_account(public) {
             Some(account) => {
-                (account.latest_balance, account.finalized_balance, account.nonce) // Return the latest balance, finalized balance, and nonce of the account
+                (
+                    account.latest_balance,
+                    account.finalized_balance,
+                    account.nonce,
+                ) // Return the latest balance, finalized balance, and nonce of the account
             }
             None => (Amount::zero(), Amount::zero(), 0), // Return zero values if the account doesn't exist
         }

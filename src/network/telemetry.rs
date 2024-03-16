@@ -14,7 +14,7 @@ use super::Version;
 pub(crate) struct Telemetry {
     pub slot: Slot,
     pub logical: Logical,
-    pub version: Version
+    pub version: Version,
 }
 
 impl Telemetry {
