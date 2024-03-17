@@ -1,5 +1,5 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
-use crate::node::Error;
+use crate::util::Error;
 use crate::{bail, error};
 use bitvec::prelude::*;
 use serde::{Deserialize, Deserializer};
@@ -114,21 +114,21 @@ macro_rules! hexify {
             }
 
             pub fn as_hex(&self) -> String {
-                crate::keys::to_hex(&self.0)
+                crate::util::to_hex(&self.0)
             }
 
             pub fn as_hex_lower(&self) -> String {
-                crate::keys::to_hex_lower(&self.0)
+                crate::util::to_hex_lower(&self.0)
             }
         }
 
         impl ::std::str::FromStr for $struct {
-            type Err = crate::node::Error;
+            type Err = crate::util::Error;
 
             fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 use ::std::convert::TryFrom;
 
-                crate::keys::expect_len(s.len(), Self::LEN * 2, $description)?;
+                crate::util::expect_len(s.len(), Self::LEN * 2, $description)?;
                 let vec = hex::decode(s.as_bytes()).map_err(|e| crate::error!(
                     "can't parse hex: {} {}", $description, e
                 ))?;
@@ -150,13 +150,13 @@ macro_rules! hexify {
                     f,
                     "{}({})",
                     stringify!($struct),
-                    crate::keys::to_hex(self.0.as_ref()),
+                    crate::util::to_hex(self.0.as_ref()),
                 )
             }
         }
 
         impl ::std::convert::TryFrom<&[u8]> for $struct {
-            type Error = crate::node::Error;
+            type Error = crate::util::Error;
 
             fn try_from(v: &[u8]) -> std::result::Result<Self, Self::Error> {
                 Ok(Self(<[u8; Self::LEN]>::try_from(v)?))
@@ -204,7 +204,7 @@ macro_rules! hexify {
 
 #[cfg(test)]
 mod tests {
-    use crate::keys::public::Public;
+    use crate::keys::Public;
 
     use super::*;
 

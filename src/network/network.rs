@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 use crate::{
     blocks::{Amount, Slot},
     keys::{Private, Public, Signature},
-    node::Error,
+    util::Error,
 };
 
 use super::{CenterMap, Logical, Peer, Shred, Telemetry, Version};

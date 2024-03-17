@@ -67,10 +67,10 @@ where
 #[macro_export]
 macro_rules! error {
     ($msg:expr) => (
-        crate::node::Error::from_static(concat!($msg, " @ ", file!(), ":", line!()))
+        crate::util::Error::from_static(concat!($msg, " @ ", file!(), ":", line!()))
     );
     ($fmt:expr, $($arg:tt)*) => (
-        crate::node::Error::from_string(format!(concat!($fmt, " @ {}:{}"), $($arg)*, file!(), line!()))
+        crate::util::Error::from_string(format!(concat!($fmt, " @ {}:{}"), $($arg)*, file!(), line!()))
     );
 }
 

@@ -30,6 +30,9 @@ impl Slot {
     pub fn from_bytes(self, bytes: [u8; 8]) -> Self {
         Self(u64::from_le_bytes(bytes))
     }
+    pub fn max() -> Self {
+        Self(u64::MAX)
+    }
 }
 
 impl std::ops::Sub for Slot {

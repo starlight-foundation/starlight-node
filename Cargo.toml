@@ -24,3 +24,4 @@ blake2b_simd = "1.0.2"
 once_cell = "1.19.0"
 reed-solomon-erasure = "6.0.0"
 itertools = "0.12.1"
+zstd-safe = { version = "7.0.0", features = ["experimental"] }

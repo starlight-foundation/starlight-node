@@ -1,6 +1,5 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
 mod difficulty;
-mod encoding;
 mod hash;
 mod private;
 mod public;
@@ -9,7 +8,6 @@ mod signature;
 mod work;
 
 pub use difficulty::Difficulty;
-pub use encoding::{deserialize_from_str, expect_len, to_hex, to_hex_lower};
 pub use hash::{Hash, HashBuilder};
 pub use private::Private;
 pub use public::Public;

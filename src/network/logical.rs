@@ -2,7 +2,7 @@ use std::{array::IntoIter, fmt::Display, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{error, node::Error};
+use crate::{error, util::Error};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Logical {

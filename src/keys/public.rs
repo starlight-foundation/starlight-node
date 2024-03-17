@@ -4,7 +4,7 @@ use super::Hash;
 use crate::bail;
 use crate::error;
 use crate::hexify;
-use crate::node::Error;
+use crate::util::Error;
 use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
