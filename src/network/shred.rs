@@ -3,11 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use bitvec::vec::BitVec;
 use once_cell::sync::Lazy;
 use reed_solomon_erasure::{galois_8::{Field, ReedSolomon}, ReconstructShard};
 use serde::{Deserialize, Serialize};
 
-use crate::util::UninitializedVec;
+use crate::util::{UninitializedBitVec, UninitializedVec};
 
 struct ReedSolomonCache {
     cache: Mutex<HashMap<(usize, usize), Arc<ReedSolomon>>>,
@@ -53,7 +54,7 @@ const DATA_TO_TOTAL: [usize; 33] = [
     55, 56, 58, 59, 60, 62, 63, 64, // 32
 ];
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Shred {
     n_batches: u32,
     n_data: u32,
@@ -79,6 +80,10 @@ const TOTAL_SHREDS_PER_FULL_BATCH: usize = DATA_TO_TOTAL[DATA_SHREDS_PER_FULL_BA
 
 impl Shred {
     pub fn shred(data: &[u8], chunk_len: u32) -> Vec<Self> {
+        if data.len() == 0 || chunk_len == 0 {
+            return Vec::new();
+        }
+
         // Calculate the number of data shreds based on the data length and chunk length
         let n_data_shreds = data.len().div_ceil(chunk_len as usize);
         
@@ -194,36 +199,41 @@ impl ReconstructShard<Field> for BatchItem {
     ) -> Result<&mut [<Field as reed_solomon_erasure::Field>::Elem], Result<&mut [<Field as reed_solomon_erasure::Field>::Elem], reed_solomon_erasure::Error>> {
         if self.0.is_empty() {
             self.0 = Vec::uninitialized(len);
+            Err(Ok(&mut self.0))
+        } else {
+            Ok(&mut self.0)
         }
-        Ok(&mut self.0)
     }
 }
 
 struct Batch {
+    initialized: bool,
     n_provided: u32,
     n_data: u32,
-    chunk_len: usize,
+    chunk_len: u32,
     shreds: Vec<BatchItem>
 }
 impl Batch {
     pub fn new() -> Self {
-        let shreds = Vec::new();
         Self {
+            initialized: false,
             n_provided: 0,
             n_data: u32::MAX,
-            chunk_len: usize::MAX,
-            shreds
+            chunk_len: u32::MAX,
+            shreds: Vec::new()
         }
     }
     pub fn try_provide(&mut self, shred: Shred) -> bool {
-        if self.n_data == u32::MAX {
+        let chunk_len = shred.data.len() as u32;
+        if !self.initialized {
             self.n_data = shred.n_data;
-            self.chunk_len = shred.data.len();
+            self.chunk_len = chunk_len;
             let n_total = DATA_TO_TOTAL[self.n_data as usize];
             self.shreds.reserve(n_total);
             self.shreds.extend((0..n_total).map(|_| BatchItem(Vec::new())));
+            self.initialized = true;
         }
-        if shred.data.len() != self.chunk_len {
+        if chunk_len != self.chunk_len {
             return false;
         }
         let shred_index = shred.shred_index as usize;
@@ -238,26 +248,197 @@ impl Batch {
             false
         }
     }
-    pub fn try_reconstruct(&self) -> Option<Vec<u8>> {
-        if self.n_provided < self.n_data {
-            return None;
+    pub fn data_size(&self) -> usize {
+        self.n_data as usize * self.chunk_len as usize
+    }
+    pub fn can_reconstruct(&self) -> bool {
+        self.initialized && self.n_provided >= self.n_data
+    }
+    pub fn try_reconstruct(&mut self, out: &mut Vec<u8>) -> bool {
+        if !self.can_reconstruct() {
+            return false;
         }
         let reed_solomon = REED_SOLOMON_CACHE.get(
             self.n_data as usize, 
             DATA_TO_TOTAL[self.n_data as usize] - self.n_data as usize
         );
         reed_solomon.reconstruct_data(&mut self.shreds).unwrap();
-        let data = Vec::with_capacity(self.chunk_len * self.n_data);
-        for shred in self.shreds[..self.n_data as usize] {
-            data.extend_from_slice(&shred.0);
+        for shred in self.shreds[..self.n_data as usize].iter() {
+            out.extend_from_slice(&shred.0);
+        }
+        true
+    }
+}
+
+pub struct ShredList {
+    initialized: bool,
+    max_data_size: u32,
+    ready: BitVec,
+    batches: Vec<Batch>
+}
+
+impl ShredList {
+    pub fn new(max_data_size: u32) -> Self {
+        let batches = Vec::new();
+        Self {
+            initialized: false,
+            max_data_size,
+            ready: BitVec::new(),
+            batches
+        }
+    }
+    pub fn try_provide(&mut self, shred: Shred) -> bool {
+        let n_batches = shred.n_batches as usize;
+        let n_data = shred.n_data as usize;
+        let chunk_len = shred.data.len();
+        let data_size = n_batches * n_data * chunk_len;
+        if (n_batches == 0 || n_data == 0 || chunk_len == 0)
+        || data_size > self.max_data_size as usize {
+            return false;
+        }
+        if !self.initialized {
+            self.batches.reserve(n_batches);
+            self.batches.extend((0..n_batches).map(|_| Batch::new()));
+            self.ready = BitVec::uninitialized(n_batches);
+            self.ready.as_raw_mut_slice().fill(0);
+            self.initialized = true;
+        }
+        let batch_index = shred.batch_index as usize;
+        if batch_index >= self.batches.len() {
+            return false;
+        }
+        let batch = &mut self.batches[batch_index];
+        if batch.try_provide(shred) {
+            if batch.can_reconstruct() {
+                self.ready.set(batch_index, true);
+            }
+            true
+        } else {
+            false
+        }
+    }
+    pub fn can_reconstruct(&self) -> bool {
+        self.initialized && self.ready.iter_zeros().next().is_none()
+    }
+    pub fn try_reconstruct(&mut self) -> Option<Vec<u8>> {
+        if !self.can_reconstruct() {
+            return None;
+        }
+        if self.batches.len() == 0 {
+            return Some(Vec::new());
+        }
+        let mut data = Vec::with_capacity(
+            self.batches.len() * self.batches[0].data_size()
+        );
+        for batch in self.batches.iter_mut() {
+            assert_eq!(batch.try_reconstruct(&mut data), true);
         }
         Some(data)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use rand::RngCore;
 
+    use super::*;
 
-pub struct ShredList {
-    batches: Vec<Batch>
+    #[test]
+    fn test_shred_and_reconstruct() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let chunk_len = 2;
+
+        // Shred the data
+        let shreds = Shred::shred(&data, chunk_len);
+        
+        // Create a ShredList and provide the shreds
+        let mut shred_list = ShredList::new(data.len() as u32);
+        for shred in shreds {
+            assert!(shred_list.try_provide(shred));
+        }
+
+        // Reconstruct the data
+        let reconstructed_data = shred_list.try_reconstruct().unwrap();
+
+        // Verify the reconstructed data matches the original data
+        assert_eq!(data, reconstructed_data);
+    }
+
+    #[test]
+    fn test_shred_and_reconstruct_with_missing_shreds() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let chunk_len = 2;
+
+        // Shred the data
+        let mut shreds = Shred::shred(&data, chunk_len);
+        assert_eq!(shreds.len(), DATA_TO_TOTAL[5]);
+        
+        // Remove some shreds to simulate missing shreds
+        shreds.remove(2);
+        shreds.remove(3);
+        shreds.remove(9);
+        shreds.remove(10);
+        shreds.remove(11);
+
+        // Create a ShredList and provide the remaining shreds
+        let mut shred_list = ShredList::new(data.len() as u32);
+        for shred in shreds {
+            assert!(shred_list.try_provide(shred));
+        }
+
+        // Reconstruct the data
+        let reconstructed_data = shred_list.try_reconstruct().unwrap();
+
+        // Verify the reconstructed data matches the original data
+        assert_eq!(data, reconstructed_data);
+    }
+
+    #[test]
+    fn test_shred_and_reconstruct_with_insufficient_shreds() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let chunk_len = 2;
+
+        // Shred the data
+        let mut shreds = Shred::shred(&data, chunk_len);
+
+        // Remove too many shreds to make reconstruction impossible
+        shreds.truncate(2);
+
+        // Create a ShredList and provide the remaining shreds
+        let mut shred_list = ShredList::new(data.len() as u32);
+        for shred in shreds {
+            assert!(shred_list.try_provide(shred));
+        }
+
+        // Try to reconstruct the data
+        let reconstructed_data = shred_list.try_reconstruct();
+
+        // Verify that reconstruction fails due to insufficient shreds
+        assert!(reconstructed_data.is_none());
+    }
+
+    #[test]
+    fn test_shred_and_reconstruct_with_large_data() {
+        let data = {
+            let mut v = vec![0; 1024 * 1024]; // 1 MB of data
+            rand::thread_rng().fill_bytes(&mut v);
+            v
+        };
+        let chunk_len = 1024;
+
+        // Shred the large data
+        let shreds = Shred::shred(&data, chunk_len);
+
+        // Create a ShredList and provide the shreds
+        let mut shred_list = ShredList::new(data.len() as u32);
+        for shred in shreds {
+            assert!(shred_list.try_provide(shred));
+        }
+
+        // Reconstruct the data
+        let reconstructed_data = shred_list.try_reconstruct().unwrap();
+
+        // Verify the reconstructed data matches the original data
+        assert_eq!(data, reconstructed_data);
+    }
 }
-

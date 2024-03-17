@@ -16,6 +16,7 @@ const VERSION: Version = Version::new(0, 1, 0);
 const MTU: usize = 1280;
 const PEER_UPDATE: u64 = 15;
 const PEER_TIMEOUT: u64 = 2 * PEER_UPDATE;
+const MAGIC_NUMBER: [u8; 8] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa, 0xe6];
 fn fanout(n: usize) -> usize {
     (n as f64).powf(0.58) as usize
 }
