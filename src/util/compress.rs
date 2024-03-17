@@ -2,6 +2,8 @@ use std::cell::RefCell;
 
 use zstd_safe::{CCtx, DCtx};
 
+use super::UninitializedVec;
+
 const ZSTD_LEVEL: i32 = 6;
 
 thread_local! {
@@ -10,10 +12,7 @@ thread_local! {
 }
 
 pub fn compress(bytes: &[u8]) -> Vec<u8> {
-    let mut output = Vec::with_capacity(zstd_safe::compress_bound(bytes.len()));
-    unsafe {
-        output.set_len(output.capacity());
-    }
+    let mut output = Vec::uninitialized(zstd_safe::compress_bound(bytes.len()));
     let n = ZSTD_CCTX.with(|cctx| cctx.borrow_mut().compress(
         &mut output[..], bytes, ZSTD_LEVEL
     )).unwrap();
@@ -22,12 +21,9 @@ pub fn compress(bytes: &[u8]) -> Vec<u8> {
 }
 
 pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, zstd_safe::ErrorCode> {
-    let mut output = Vec::with_capacity(
+    let mut output = Vec::uninitialized(
         zstd_safe::decompress_bound(bytes)? as usize
     );
-    unsafe {
-        output.set_len(output.capacity());
-    }
     let n = ZSTD_DCTX.with(|dctx| dctx.borrow_mut().decompress(
         &mut output[..], bytes
     ))?;
