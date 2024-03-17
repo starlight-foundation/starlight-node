@@ -78,9 +78,9 @@ const DATA_SHREDS_PER_FULL_BATCH: usize = 32;
 const TOTAL_SHREDS_PER_FULL_BATCH: usize = DATA_TO_TOTAL[DATA_SHREDS_PER_FULL_BATCH];
 
 impl Shred {
-    pub fn shred(data: &[u8], shred_size: u32) -> Vec<Self> {
-        // Calculate the number of data shreds based on the data length and shred size
-        let n_data_shreds = data.len().div_ceil(shred_size as usize);
+    pub fn shred(data: &[u8], chunk_len: u32) -> Vec<Self> {
+        // Calculate the number of data shreds based on the data length and chunk length
+        let n_data_shreds = data.len().div_ceil(chunk_len as usize);
         
         // Calculate the number of batches based on the number of data shreds
         let n_batches = n_data_shreds.div_ceil(DATA_SHREDS_PER_FULL_BATCH);
@@ -99,7 +99,7 @@ impl Shred {
         };
         
         // Create an iterator to chunk the data into shreds
-        let mut chunks = data.chunks(shred_size as usize);
+        let mut chunks = data.chunks(chunk_len as usize);
         
         // Create a vector to store the shreds with the calculated length
         let mut shreds = Vec::uninitialized(shred_count);
@@ -146,7 +146,7 @@ impl Shred {
                     n_data: n_data as u32,
                     batch_index: batch_index as u32,
                     shred_index: (i - start_index) as u32,
-                    data: Vec::uninitialized(shred_size as usize)
+                    data: Vec::uninitialized(chunk_len as usize)
                 };
                 shreds[i] = shred;
             }
@@ -200,8 +200,9 @@ impl ReconstructShard<Field> for BatchItem {
 }
 
 struct Batch {
-    n_provided: usize,
-    n_data: usize,
+    n_provided: u32,
+    n_data: u32,
+    chunk_len: usize,
     shreds: Vec<BatchItem>
 }
 impl Batch {
@@ -209,17 +210,21 @@ impl Batch {
         let shreds = Vec::new();
         Self {
             n_provided: 0,
-            n_data: usize::MAX,
+            n_data: u32::MAX,
+            chunk_len: usize::MAX,
             shreds
         }
     }
     pub fn try_provide(&mut self, shred: Shred) -> bool {
-        if shred.n_batches > 
-        if self.n_data == usize::MAX {
-            self.n_data = shred.n_data as usize;
-            let n_total = DATA_TO_TOTAL[self.n_data];
+        if self.n_data == u32::MAX {
+            self.n_data = shred.n_data;
+            self.chunk_len = shred.data.len();
+            let n_total = DATA_TO_TOTAL[self.n_data as usize];
             self.shreds.reserve(n_total);
             self.shreds.extend((0..n_total).map(|_| BatchItem(Vec::new())));
+        }
+        if shred.data.len() != self.chunk_len {
+            return false;
         }
         let shred_index = shred.shred_index as usize;
         if shred_index >= self.shreds.len() {
@@ -238,11 +243,14 @@ impl Batch {
             return None;
         }
         let reed_solomon = REED_SOLOMON_CACHE.get(
-            self.n_data, DATA_TO_TOTAL[self.n_data] - self.n_data
+            self.n_data as usize, 
+            DATA_TO_TOTAL[self.n_data as usize] - self.n_data as usize
         );
         reed_solomon.reconstruct_data(&mut self.shreds).unwrap();
-        
-        let data = self.shreds.iter().map(|shred| shred.clone()).flatten().collect();
+        let data = Vec::with_capacity(self.chunk_len * self.n_data);
+        for shred in self.shreds[..self.n_data as usize] {
+            data.extend_from_slice(&shred.0);
+        }
         Some(data)
     }
 }
