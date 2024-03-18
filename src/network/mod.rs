@@ -3,13 +3,14 @@ mod logical;
 mod network;
 mod peer;
 mod shred;
-mod telemetry;
 mod version;
+mod compress;
 
-pub use center_map::{CenterMap, CenterMapValue};
-pub(crate) use logical::Logical;
+use center_map::{CenterMap, CenterMapValue};
+use logical::Logical;
+use peer::Peer;
+use shred::Shred;
+use version::Version;
+use compress::{compress, decompress};
+
 pub use network::Network;
-pub(crate) use peer::Peer;
-pub use shred::Shred;
-pub(crate) use telemetry::Telemetry;
-pub(crate) use version::Version;

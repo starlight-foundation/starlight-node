@@ -57,7 +57,8 @@ const DATA_TO_TOTAL: [usize; 33] = [
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Shred {
     n_batches: u32,
-    n_data: u32,
+    n_data_shreds: u32,
+    overall_data_size: u32,
     batch_index: u32,
     shred_index: u32,
     data: Vec<u8>,
@@ -136,10 +137,16 @@ impl Shred {
             for i in start_index..end_data_index {
                 let shred = Self {
                     n_batches: n_batches as u32,
-                    n_data: n_data as u32,
+                    n_data_shreds: n_data as u32,
+                    overall_data_size: data.len() as u32,
                     batch_index: batch_index as u32,
                     shred_index: (i - start_index) as u32,
-                    data: chunks.next().unwrap().to_vec(),
+                    data: {
+                        let mut v = Vec::with_capacity(chunk_len as usize);
+                        v.extend_from_slice(chunks.next().unwrap());
+                        v.extend(std::iter::repeat(0).take(v.capacity() - v.len()));
+                        v
+                    },
                 };
                 shreds[i] = shred;
             }
@@ -148,7 +155,8 @@ impl Shred {
             for i in end_data_index..end_total_index {
                 let shred = Self {
                     n_batches: n_batches as u32,
-                    n_data: n_data as u32,
+                    n_data_shreds: n_data as u32,
+                    overall_data_size: data.len() as u32,
                     batch_index: batch_index as u32,
                     shred_index: (i - start_index) as u32,
                     data: Vec::uninitialized(chunk_len as usize)
@@ -171,6 +179,12 @@ impl Shred {
         
         // Return the shredded data
         shreds
+    }
+    pub fn get_batch_index(&self) -> usize {
+        self.batch_index as usize
+    }
+    pub fn get_shred_index(&self) -> usize {
+        self.shred_index as usize
     }
 }
 
@@ -223,10 +237,19 @@ impl Batch {
             shreds: Vec::new()
         }
     }
+    pub fn need_shred(&self, shred_index: usize) -> bool {
+        if !self.initialized {
+            return true;
+        }
+        match self.shreds.get(shred_index) {
+            Some(shred) => shred.0.is_empty(),
+            None => false
+        }
+    }
     pub fn try_provide(&mut self, shred: Shred) -> bool {
         let chunk_len = shred.data.len() as u32;
         if !self.initialized {
-            self.n_data = shred.n_data;
+            self.n_data = shred.n_data_shreds;
             self.chunk_len = chunk_len;
             let n_total = DATA_TO_TOTAL[self.n_data as usize];
             self.shreds.reserve(n_total);
@@ -273,6 +296,7 @@ impl Batch {
 pub struct ShredList {
     initialized: bool,
     max_data_size: u32,
+    claimed_data_size: u32,
     ready: BitVec,
     batches: Vec<Batch>
 }
@@ -283,22 +307,25 @@ impl ShredList {
         Self {
             initialized: false,
             max_data_size,
+            claimed_data_size: 0,
             ready: BitVec::new(),
             batches
         }
     }
     pub fn try_provide(&mut self, shred: Shred) -> bool {
         let n_batches = shred.n_batches as usize;
-        let n_data = shred.n_data as usize;
+        let n_data = shred.n_data_shreds as usize;
         let chunk_len = shred.data.len();
-        let data_size = n_batches * n_data * chunk_len;
-        if (n_batches == 0 || n_data == 0 || chunk_len == 0)
-        || data_size > self.max_data_size as usize {
+        let data_size_bound = n_batches * n_data * chunk_len;
+        let claimed_data_size = shred.overall_data_size;
+        if data_size_bound > self.max_data_size as usize
+        || (n_batches == 0 || n_data == 0 || chunk_len == 0) {
             return false;
         }
         if !self.initialized {
             self.batches.reserve(n_batches);
             self.batches.extend((0..n_batches).map(|_| Batch::new()));
+            self.claimed_data_size = claimed_data_size;
             self.ready = BitVec::uninitialized(n_batches);
             self.ready.as_raw_mut_slice().fill(0);
             self.initialized = true;
@@ -333,7 +360,23 @@ impl ShredList {
         for batch in self.batches.iter_mut() {
             assert_eq!(batch.try_reconstruct(&mut data), true);
         }
+        data.truncate(self.claimed_data_size as usize);
         Some(data)
+    }
+    pub fn need_shred(&self, batch_index: usize, shred_index: usize) -> bool {
+        if !self.initialized {
+            return true;
+        }
+        match self.ready.get(batch_index).map(|x| !!x) {
+            Some(true) => return false,
+            Some(false) => {},
+            None => return false
+        }
+        let batch = &self.batches[batch_index];
+        if batch.need_shred(shred_index) {
+            return true;
+        }
+        false
     }
 }
 
@@ -342,6 +385,8 @@ mod tests {
     use rand::RngCore;
 
     use super::*;
+
+    const MAX_DATA_SIZE: u32 = 1024 * 1024 * 8; // 8 MB
 
     #[test]
     fn test_shred_and_reconstruct() {
@@ -352,7 +397,7 @@ mod tests {
         let shreds = Shred::shred(&data, chunk_len);
         
         // Create a ShredList and provide the shreds
-        let mut shred_list = ShredList::new(data.len() as u32);
+        let mut shred_list = ShredList::new(MAX_DATA_SIZE);
         for shred in shreds {
             assert!(shred_list.try_provide(shred));
         }
@@ -381,7 +426,7 @@ mod tests {
         shreds.remove(11);
 
         // Create a ShredList and provide the remaining shreds
-        let mut shred_list = ShredList::new(data.len() as u32);
+        let mut shred_list = ShredList::new(MAX_DATA_SIZE);
         for shred in shreds {
             assert!(shred_list.try_provide(shred));
         }
@@ -405,7 +450,7 @@ mod tests {
         shreds.truncate(2);
 
         // Create a ShredList and provide the remaining shreds
-        let mut shred_list = ShredList::new(data.len() as u32);
+        let mut shred_list = ShredList::new(MAX_DATA_SIZE);
         for shred in shreds {
             assert!(shred_list.try_provide(shred));
         }
@@ -424,13 +469,14 @@ mod tests {
             rand::thread_rng().fill_bytes(&mut v);
             v
         };
-        let chunk_len = 1024;
+        let chunk_len = 12;
 
         // Shred the large data
         let shreds = Shred::shred(&data, chunk_len);
+        assert!(shreds.len() >= (data.len() / chunk_len as usize));
 
         // Create a ShredList and provide the shreds
-        let mut shred_list = ShredList::new(data.len() as u32);
+        let mut shred_list = ShredList::new(MAX_DATA_SIZE);
         for shred in shreds {
             assert!(shred_list.try_provide(shred));
         }

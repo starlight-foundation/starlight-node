@@ -13,7 +13,7 @@ pub struct WorkGenerateResponse {
     hash: String,
 }
 
-pub(crate) fn on_work_generate(req: WorkGenerateRequest) -> WorkGenerateResponse {
+pub fn on_work_generate(req: WorkGenerateRequest) -> WorkGenerateResponse {
     WorkGenerateResponse {
         work: "2b3d689bbcb21dca".to_string(),
         difficulty: "fffffff93c41ec94".to_string(),

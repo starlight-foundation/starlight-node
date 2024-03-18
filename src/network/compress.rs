@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use zstd_safe::{CCtx, DCtx};
 
-use super::UninitializedVec;
+use crate::util::UninitializedVec;
 
 const ZSTD_LEVEL: i32 = 6;
 

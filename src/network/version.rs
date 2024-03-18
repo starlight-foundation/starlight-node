@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub(crate) struct Version {
+pub struct Version {
     major: u16,
     minor: u16,
     patch: u16,

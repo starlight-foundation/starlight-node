@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use blake2b_simd::{Params, State};
 use once_cell::sync::Lazy;
 
@@ -8,6 +10,8 @@ static PARAMS: Lazy<Params> = Lazy::new(|| {
     params.hash_length(32);
     params
 });
+
+static STATE: Lazy<State> = Lazy::new(|| PARAMS.to_state());
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Hash([u8; 32]);
@@ -37,7 +41,7 @@ impl Hash {
 pub struct HashBuilder(State);
 impl HashBuilder {
     pub fn new() -> Self {
-        Self(PARAMS.to_state())
+        Self(STATE.clone())
     }
 
     pub fn update(&mut self, data: &[u8]) {
@@ -47,5 +51,16 @@ impl HashBuilder {
     pub fn finalize(&self) -> Hash {
         let mut v = [0u8; 32];
         Hash(self.0.finalize().as_bytes().try_into().unwrap())
+    }
+}
+
+impl Write for HashBuilder {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+    
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }

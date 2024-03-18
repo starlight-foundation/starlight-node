@@ -8,14 +8,14 @@ use rand::RngCore;
 
 /// 256 bit private key which can generate a public key.
 #[derive(Clone, Copy)]
-pub struct Private(pub(crate) [u8; 32]);
+pub struct Private(pub [u8; 32]);
 
 hexify!(Private, "private key");
 
 impl Private {
-    pub(crate) const LEN: usize = 32;
+    pub const LEN: usize = 32;
 
-    pub(crate) const fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self([0u8; 32])
     }
 
@@ -47,7 +47,7 @@ impl Private {
         SecretKey::from_bytes(&self.0).unwrap()
     }
 
-    pub(crate) fn internal_public(&self) -> PublicKey {
+    pub fn internal_public(&self) -> PublicKey {
         PublicKey::from(&self.to_ed25519_dalek())
     }
 

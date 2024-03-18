@@ -11,15 +11,15 @@ hexify!(Signature, "signature");
 impl Signature {
     pub const LEN: usize = 64;
 
-    pub(crate) fn zero() -> Self {
+    pub fn zero() -> Self {
         Self([0u8; 64])
     }
 
-    pub(crate) fn from_bytes(bytes: [u8; 64]) -> Self {
+    pub fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)
     }
 
-    pub(crate) fn internal(&self) -> Result<ed25519_dalek_blake2_feeless::Signature, ()> {
+    pub fn internal(&self) -> Result<ed25519_dalek_blake2_feeless::Signature, ()> {
         ed25519_dalek_blake2_feeless::Signature::from_bytes(&self.0).or(Err(()))
     }
 }

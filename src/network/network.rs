@@ -5,12 +5,10 @@ use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
 
 use crate::{
-    blocks::{Amount, Slot},
-    keys::{Private, Public, Signature},
-    util::Error,
+    blocks::{Amount, Slot}, error, keys::{Private, Public, Signature}, util::{self, Error}
 };
 
-use super::{CenterMap, Logical, Peer, Shred, Telemetry, Version};
+use super::{CenterMap, Logical, Peer, Shred, Version};
 
 const VERSION: Version = Version::new(0, 1, 0);
 const MTU: usize = 1280;
@@ -18,12 +16,36 @@ const PEER_UPDATE: u64 = 15;
 const PEER_TIMEOUT: u64 = 2 * PEER_UPDATE;
 const MAGIC_NUMBER: [u8; 8] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa, 0xe6];
 fn fanout(n: usize) -> usize {
-    (n as f64).powf(0.58) as usize
+    if n < 8 {
+        n
+    } else if n < 16 {
+        n / 2
+    } else if n < 32 {
+        n / 3
+    } else if n < 64 {
+        n / 4
+    } else {
+        (n as f64).powf(0.58) as usize
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct ShredBroadcast {
+    slot: Slot,
+    shred: Shred,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Telemetry {
+    slot: Slot,
+    logical: Logical,
+    version: Version,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 enum MsgData {
-    Telemetry(Telemetry)
+    Telemetry(Telemetry),
+    ShredBroadcast(ShredBroadcast)
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -31,6 +53,26 @@ struct Msg {
     from: Public,
     signature: Signature,
     data: MsgData,
+}
+impl Msg {
+    fn serialize(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes = Vec::with_capacity(MTU);
+        bytes.extend_from_slice(&MAGIC_NUMBER);
+        util::serialize_into(&mut bytes, self)?;
+        Ok(bytes)
+    }
+    fn deserialize(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.len() < 8
+        || bytes[0..8] != MAGIC_NUMBER
+        || bytes.len() > MTU {
+            return Err(error!("invalid message"));
+        }
+        Ok(util::deserialize(&bytes[8..])?)
+    }
+    fn verify(&self) -> Result<(), ()> {
+        let hash = util::hash(&self.data);
+        self.from.verify(&hash, &self.signature)
+    }
 }
 
 pub struct Network {
@@ -41,6 +83,7 @@ pub struct Network {
     peers: CenterMap<Public, Amount, Peer>,
     initial_peers: Vec<Logical>,
     get_weight: Box<dyn Fn(&Public) -> Amount>,
+    need_shred: Box<dyn Fn(Slot, usize, usize) -> bool>,
 }
 
 impl Network {
@@ -51,6 +94,7 @@ impl Network {
         initial_peers: Vec<Logical>,
         half_max_peers: usize,
         get_weight: Box<dyn Fn(&Public) -> Amount>,
+        need_shred: Box<dyn Fn(Slot, usize, usize) -> bool>
     ) -> Result<Self, Error> {
         Ok(Self {
             logical,
@@ -60,6 +104,7 @@ impl Network {
             peers: CenterMap::new(get_weight(&public), half_max_peers),
             initial_peers,
             get_weight,
+            need_shred
         })
     }
 
@@ -83,6 +128,16 @@ impl Network {
                 _ = socket.send_to(&msg, logical.to_socket_addr()).await;
             });
             broadcast_left -= 1;
+        }
+    }
+
+    fn broadcast_initial_peers(&self, bytes: Arc<Vec<u8>>) {
+        for &logical in &self.initial_peers {
+            let socket = self.socket.clone();
+            let bytes = bytes.clone();
+            tokio::spawn(async move {
+                _ = socket.send_to(&bytes, logical.to_socket_addr()).await;
+            });
         }
     }
 
@@ -115,23 +170,27 @@ impl Network {
         }
     }
 
-    fn on_bytes(&mut self, bytes: &[u8]) {
-        let msg: Msg = match bincode::deserialize(bytes) {
-            Ok(msg) => msg,
-            Err(_) => return,
+    fn on_shred_broadcast(&mut self, from: Public, b: ShredBroadcast) -> bool {
+        if !self.need_shred(b.slot, b.shred.get_batch_index(), b.shred.get_shred_index()) {
+            return false;
+        }
+        self.shreds.insert(b.slot, b.shred);
+        true
+    }
+
+    fn on_msg(&mut self, msg: Msg) {
+        let should_broadcast = match msg.data {
+            MsgData::Telemetry(tel) => self.on_telemetry(msg.from, tel),
+            MsgData::ShredBroadcast(broadcast) => self.on_shred_broadcast(msg.from, broadcast),
         };
-        let hash = match msg.data {
-            MsgData::Telemetry(tel) => tel.hash(),
-        };
-        if msg.from.verify(&hash, &msg.signature).is_err() {
+        if !should_broadcast {
             return;
         }
-        let should_broadcast = match msg.data {
-            MsgData::Telemetry(tel) => self.on_telemetry(msg.from, tel)
-        };
-        if should_broadcast {
-            self.broadcast_fanout(Arc::new(bincode::serialize(&msg).unwrap()));
-        }
+        let bytes = Arc::new(match msg.serialize() {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        });
+        self.broadcast_fanout(bytes);
     }
 
     fn on_interval(&mut self) {
@@ -140,43 +199,53 @@ impl Network {
             version: VERSION,
             slot: Slot::now(),
         };
-        let msg = Arc::new(
-            bincode::serialize(&Msg {
-                from: self.public,
-                signature: self.private.sign(&tel.hash()),
-                data: MsgData::Telemetry(tel),
-            })
-            .unwrap(),
-        );
+        let mut bytes = Vec::with_capacity(MTU);
+        bytes.extend_from_slice(&MAGIC_NUMBER);
+        bincode::serialize_into(&mut bytes, &Msg {
+            from: self.public,
+            signature: self.private.sign(&tel.hash()),
+            data: MsgData::Telemetry(tel),
+        }).unwrap();
+        let bytes = Arc::new(bytes);
         if self.peers.len() == 0 {
-            for &logical in &self.initial_peers {
-                let socket = self.socket.clone();
-                let msg = msg.clone();
-                tokio::spawn(async move {
-                    _ = socket.send_to(&msg, logical.to_socket_addr()).await;
-                });
-            }
-            return;
+            self.broadcast_initial_peers(bytes);
+        } else {
+            self.broadcast_fanout(bytes);
         }
-        self.broadcast_fanout(msg);
     }
 
     pub async fn run(mut self) -> Result<(), Error> {
         let mut interval = tokio::time::interval(Duration::from_secs(PEER_UPDATE));
-        loop {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let socket = self.socket.clone();
+        tokio::spawn(async move {
             let mut buf = [0; MTU];
-            tokio::select! {
-                _ = interval.tick() => self.on_interval(),
-                v = self.socket.recv_from(&mut buf) => match v {
-                    Ok((n, _)) => self.on_bytes(&buf[..n]),
+            loop {
+                let n = match socket.recv_from(&mut buf).await {
+                    Ok((n, _)) => n,
                     Err(e) => match e.kind() {
                         std::io::ErrorKind::WouldBlock => continue,
                         std::io::ErrorKind::Interrupted => continue,
                         _ => {
-                            return Err(Error::from(e));
+                            return Err::<(), Error>(Error::from(e));
                         }
                     },
+                };
+                let bytes = &buf[..n];
+                let msg = match Msg::deserialize(bytes) {
+                    Ok(msg) => msg,
+                    Err(_) => continue,
+                };
+                if msg.verify().is_err() {
+                    continue;
                 }
+                tx.send(msg)?;
+            }
+        });
+        loop {
+            tokio::select! {
+                _ = interval.tick() => self.on_interval(),
+                msg = rx.recv() => self.on_msg(msg.ok_or(error!("socket crashed"))?),
             }
         }
     }

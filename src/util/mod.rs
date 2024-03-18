@@ -1,11 +1,31 @@
 mod error;
 mod encoding;
-mod compress;
 
 use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
+use serde::{de::DeserializeOwned, Serialize};
+
 pub use error::Error;
 pub use encoding::{deserialize_from_str, expect_len, to_hex, to_hex_lower};
-pub use compress::{compress, decompress};
+
+use crate::keys::{Hash, HashBuilder};
+
+pub fn hash<T: Serialize>(value: &T) -> Hash {
+    let mut hasher = HashBuilder::new();
+    bincode::serialize_into(&mut hasher, value).unwrap();
+    hasher.finalize()
+}
+
+pub fn serialize_into<T: Serialize>(buf: &mut Vec<u8>, value: &T) -> Result<(), Error> {
+    bincode::serialize_into(buf, value).map_err(Into::into)
+}
+
+pub fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, Error> {
+    bincode::serialize(value).map_err(Into::into)
+}
+
+pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
+    bincode::deserialize(bytes).map_err(Into::into)
+}
 
 pub trait UninitializedVec<T: Default> {
     fn uninitialized(len: usize) -> Vec<T> {

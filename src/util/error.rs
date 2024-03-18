@@ -1,14 +1,14 @@
 use std::fmt;
 
 pub struct Error {
-    ptr: *const u8,
+    ptr: *mut u8,
     len: isize,
 }
 
 impl Error {
     pub const fn from_static(s: &'static str) -> Self {
         Self {
-            ptr: s.as_ptr(),
+            ptr: s.as_ptr() as *mut u8,
             len: -(s.len() as isize),
         }
     }
@@ -16,9 +16,9 @@ impl Error {
     pub fn from_string(s: String) -> Self {
         let s = s.into_boxed_str();
         let len = s.len();
-        let ptr = Box::into_raw(s) as *const u8;
+        let ptr = Box::into_raw(s);
         Self {
-            ptr,
+            ptr: ptr as *mut u8,
             len: len as isize,
         }
     }
@@ -29,6 +29,20 @@ impl Error {
             let bytes = std::slice::from_raw_parts(self.ptr, len);
             std::str::from_utf8_unchecked(bytes)
         }
+    }
+}
+
+unsafe impl Send for Error {}
+
+impl Clone for Error {
+    fn clone(&self) -> Self {
+        if self.len <= 0 {
+            return Self {
+                ptr: self.ptr,
+                len: self.len,
+            };
+        }
+        Self::from_string(self.as_str().to_string())
     }
 }
 
@@ -50,7 +64,7 @@ impl Drop for Error {
             return;
         }
         let len = self.len as usize;
-        let slice = unsafe { std::slice::from_raw_parts_mut(self.ptr as *mut u8, len) };
+        let slice = unsafe { std::slice::from_raw_parts_mut(self.ptr, len) };
         let _ = unsafe { Box::from_raw(slice) };
     }
 }

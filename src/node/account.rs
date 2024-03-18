@@ -6,7 +6,7 @@ use crate::{
 use super::Batch;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Account {
+pub struct Account {
     pub batch: Batch,
     pub latest_balance: Amount,
     pub finalized_balance: Amount,
