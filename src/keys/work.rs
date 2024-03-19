@@ -4,7 +4,7 @@ use super::Hash;
 use crate::error;
 use crate::hexify;
 use crate::util::Error;
-use once_cell::sync::Lazy;
+use blake2b_simd::Params;
 use rand::RngCore;
 use std::convert::TryFrom;
 
@@ -15,12 +15,12 @@ pub struct Work(pub [u8; 8]);
 
 hexify!(Work, "work");
 
-static PARAMS: Lazy<blake2b_simd::Params> = Lazy::new(|| {
-    let params = blake2b_simd::Params::new();
-    let mut params = blake2b_simd::Params::new();
+#[static_init::dynamic]
+static PARAMS: Params = {
+    let mut params = Params::new();
     params.hash_length(8);
     params
-});
+};
 
 impl Work {
     pub const LEN: usize = 8;

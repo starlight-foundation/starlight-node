@@ -1,4 +1,5 @@
 use crate::{
+    error,
     keys::{Difficulty, Hash, Public, Signature, Work},
     util::Error,
 };
@@ -20,6 +21,9 @@ pub struct Tx {
 
 impl Tx {
     pub fn verify_and_hash(&self) -> Result<Hash, Error> {
+        if self.kind == TxKind::Normal && self.amount == Amount::zero() {
+            return Err(error!("normal tx must transfer > 0"));
+        }
         let mut bytes = [0u8; 96];
         bytes[0..8].copy_from_slice(&self.nonce.to_le_bytes());
         bytes[8..40].copy_from_slice(self.from.as_bytes());

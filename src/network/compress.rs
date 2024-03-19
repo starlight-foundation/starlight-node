@@ -2,7 +2,10 @@ use std::cell::RefCell;
 
 use zstd_safe::{CCtx, DCtx};
 
-use crate::util::UninitializedVec;
+use crate::{
+    error,
+    util::{Error, UninitializedVec},
+};
 
 const ZSTD_LEVEL: i32 = 6;
 
@@ -23,9 +26,18 @@ pub fn compress(bytes: &[u8]) -> Vec<u8> {
     output
 }
 
-pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, zstd_safe::ErrorCode> {
-    let mut output = Vec::uninitialized(zstd_safe::decompress_bound(bytes)? as usize);
-    let n = ZSTD_DCTX.with(|dctx| dctx.borrow_mut().decompress(&mut output[..], bytes))?;
+pub fn decompress(bytes: &[u8], max_size: Option<usize>) -> Result<Vec<u8>, Error> {
+    let decompress_bound = zstd_safe::decompress_bound(bytes)
+        .or_else(|e| Err(error!("decompress_bound failed: {:?}", e)))?;
+    if let Some(max_size) = max_size {
+        if decompress_bound > max_size as u64 {
+            return Err(error!("decompressed size > max_size"));
+        }
+    }
+    let mut output = Vec::uninitialized(decompress_bound as usize);
+    let n = ZSTD_DCTX
+        .with(|dctx| dctx.borrow_mut().decompress(&mut output[..], bytes))
+        .or_else(|e| Err(error!("decompress failed: {:?}", e)))?;
     output.truncate(n);
     Ok(output)
 }
@@ -38,13 +50,21 @@ mod tests {
     fn test_compress_decompress() {
         let data = b"hello world";
         let compressed = compress(data);
-        let decompressed = decompress(&compressed).unwrap();
+        let decompressed = decompress(&compressed, None).unwrap();
         assert_eq!(data, &decompressed[..]);
+    }
+
+    #[test]
+    fn test_too_large() {
+        let data = b"hello world";
+        let compressed = compress(data);
+        let max_size = Some(5); // Intentionally smaller than the expected decompressed size
+        assert!(decompress(&compressed, max_size).is_err());
     }
 
     #[test]
     fn test_incorrect_decompress() {
         let data = b"wt2gh2giojamonguspotion";
-        assert!(decompress(data).is_err());
+        assert!(decompress(data, None).is_err());
     }
 }

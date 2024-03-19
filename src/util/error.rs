@@ -1,5 +1,7 @@
 use std::fmt;
 
+// if len <= 0, Error is a statically-allocated string
+// else, Error is a heap-allocated string
 pub struct Error {
     ptr: *mut u8,
     len: isize,
@@ -16,6 +18,14 @@ impl Error {
     pub fn from_string(s: String) -> Self {
         let s = s.into_boxed_str();
         let len = s.len();
+        // since len == 0 are considered static,
+        // we have to do this otherwise `s` will never get dropped
+        if len == 0 {
+            return Self {
+                ptr: std::ptr::null_mut(),
+                len: 0,
+            };
+        }
         let ptr = Box::into_raw(s);
         Self {
             ptr: ptr as *mut u8,
@@ -60,7 +70,7 @@ impl fmt::Debug for Error {
 
 impl Drop for Error {
     fn drop(&mut self) {
-        if self.len < 0 {
+        if self.len <= 0 {
             return;
         }
         let len = self.len as usize;

@@ -8,7 +8,6 @@ use crate::util::Error;
 use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
-use once_cell::sync::Lazy;
 use primitive_types::U512;
 use serde::{Deserialize, Deserializer, Serializer};
 
@@ -130,11 +129,12 @@ impl Public {
     }
 }
 
-static PARAMS: Lazy<Params> = Lazy::new(|| {
+#[static_init::dynamic]
+static PARAMS: Params = {
     let mut params = Params::new();
     params.hash_length(5);
     params
-});
+};
 
 impl Public {
     pub const LEN: usize = 32;

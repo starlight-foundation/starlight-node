@@ -15,7 +15,7 @@ hexify!(Seed, "seed");
 impl Seed {
     const LEN: usize = 32;
 
-    pub fn zero() -> Self {
+    fn zero() -> Self {
         Self([0; Self::LEN])
     }
 

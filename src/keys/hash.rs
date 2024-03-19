@@ -1,17 +1,22 @@
 use std::io::Write;
 
 use blake2b_simd::{Params, State};
-use once_cell::sync::Lazy;
 
 use crate::hexify;
 
-static PARAMS: Lazy<Params> = Lazy::new(|| {
+#[static_init::dynamic]
+static PARAMS: Params = {
     let mut params = Params::new();
     params.hash_length(32);
     params
-});
+};
 
-static STATE: Lazy<State> = Lazy::new(|| PARAMS.to_state());
+#[static_init::dynamic]
+static STATE: State = {
+    let mut params = Params::new();
+    params.hash_length(32);
+    params.to_state()
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(align(8))]

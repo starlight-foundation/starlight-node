@@ -64,10 +64,66 @@ impl Bank {
         self.accounts.get(key)?.value()
     }
 
+    // Queue the send half of a transaction
+    fn queue_send(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
+        match tx.kind {
+            TxKind::Normal => self.update_account(&tx.from, |a| {
+                // Return an error if the nonce, balance, or batch doesn't match
+                if a.nonce != tx.nonce || a.latest_balance < tx.amount || a.batch == batch {
+                    return Err(());
+                }
+                let new_balance = a.latest_balance - tx.amount;
+                // Return an error if the new balance doesn't match the expected balance
+                if new_balance != tx.balance {
+                    return Err(());
+                }
+                a.batch = batch;
+                Ok(())
+            }),
+            TxKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
+                // Return an error if the nonce or batch doesn't match
+                if a.nonce != tx.nonce || a.batch == batch {
+                    return Err(());
+                }
+                // Update the account batch
+                a.batch = batch;
+                Ok(())
+            }),
+        }
+    }
+
+    // Execute the send half of a transaction
+    fn execute_send(&self, tx: &Tx) {
+        self.update_account(&tx.from, |a| {
+            a.nonce += 1;
+            a.latest_balance -= tx.amount;
+            Ok(())
+        })
+        .unwrap();
+    }
+
     // Process the send half of a transaction
     fn process_send(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
-        if tx.kind == TxKind::ChangeRepresentative {
-            self.update_account(&tx.from, |a| {
+        match tx.kind {
+            TxKind::Normal => self.update_account(&tx.from, |a| {
+                // Return an error if the nonce, balance, or batch doesn't match
+                if a.nonce != tx.nonce || a.latest_balance < tx.amount || a.batch == batch {
+                    return Err(());
+                }
+                let new_balance = a.latest_balance - tx.amount;
+                // Return an error if the new balance doesn't match the expected balance
+                if new_balance != tx.balance {
+                    return Err(());
+                }
+                // Increment the account nonce
+                a.nonce += 1;
+                // Deduct the transaction amount from the account balance
+                a.latest_balance -= tx.amount;
+                // Update the account batch
+                a.batch = batch;
+                Ok(())
+            }),
+            TxKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
                 // Return an error if the nonce or batch doesn't match
                 if a.nonce != tx.nonce || a.batch == batch {
                     return Err(());
@@ -77,27 +133,8 @@ impl Bank {
                 // Update the account batch
                 a.batch = batch;
                 Ok(())
-            })?;
+            }),
         }
-        self.update_account(&tx.from, |a| {
-            // Return an error if the nonce, balance, or batch doesn't match
-            if a.nonce != tx.nonce || a.latest_balance <= tx.amount || a.batch == batch {
-                return Err(());
-            }
-            let new_balance = a.latest_balance - tx.amount;
-            // Return an error if the new balance doesn't match the expected balance
-            if new_balance != tx.balance {
-                return Err(());
-            }
-            // Increment the account nonce
-            a.nonce += 1;
-            // Deduct the transaction amount from the account balance
-            a.latest_balance -= tx.amount;
-            // Update the account batch
-            a.batch = batch;
-            Ok(())
-        })?;
-        Ok(())
     }
 
     // Process the receive half of the transaction
@@ -225,8 +262,12 @@ impl Bank {
         // Generate a new batch ID
         let batch = self.new_batch();
         for tx in block.transactions.iter() {
-            // Process the send half of each transaction in the block
-            self.process_send(tx, batch)?;
+            // Queue each transaction in the block to ensure there are no conflicts
+            self.queue_send(tx, batch)?;
+        }
+        for tx in block.transactions.iter() {
+            // Execute the send half of each transaction in the block
+            self.execute_send(tx);
         }
         for tx in block.transactions.iter() {
             // Process the receive half of each transaction in the block
