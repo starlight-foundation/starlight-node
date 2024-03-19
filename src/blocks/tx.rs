@@ -1,4 +1,7 @@
-use crate::keys::{Difficulty, Hash, Public, Signature, Work};
+use crate::{
+    keys::{Difficulty, Hash, Public, Signature, Work},
+    util::Error,
+};
 
 use super::{Amount, TxKind};
 
@@ -16,7 +19,7 @@ pub struct Tx {
 }
 
 impl Tx {
-    pub fn verify_and_hash(&self) -> Result<Hash, ()> {
+    pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let mut bytes = [0u8; 96];
         bytes[0..8].copy_from_slice(&self.nonce.to_le_bytes());
         bytes[8..40].copy_from_slice(self.from.as_bytes());

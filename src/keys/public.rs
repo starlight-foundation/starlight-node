@@ -14,6 +14,7 @@ use serde::{Deserialize, Deserializer, Serializer};
 
 /// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
 #[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[repr(align(8))]
 pub struct Public([u8; 32]);
 
 hexify!(Public, "public key");
@@ -151,18 +152,18 @@ impl Public {
         Self([0u8; 32])
     }
 
-    pub fn verify(&self, hash: &Hash, signature: &Signature) -> Result<(), ()> {
-        let result = self.dalek_key();
-
-        match result {
-            Ok(key) => key
-                .verify(hash.as_bytes(), &signature.internal()?)
-                .or(Err(())),
-            // We're returning false here because someone we can be given a bad public key,
-            // but since we're not checking the key for how valid it is, only the signature,
-            // we just say that it does not pass validation.
-            _ => Err(()),
-        }
+    pub fn verify(&self, hash: &Hash, signature: &Signature) -> Result<(), Error> {
+        let dalek_key = self.dalek_key().or_else(|_| {
+            return Err(error!("invalid public key"));
+        })?;
+        let signature_internal = signature.internal().or_else(|_| {
+            return Err(error!("invalid signature"));
+        })?;
+        dalek_key
+            .verify(hash.as_bytes(), &signature_internal)
+            .or_else(|_| {
+                return Err(error!("verification failed"));
+            })
     }
 }
 

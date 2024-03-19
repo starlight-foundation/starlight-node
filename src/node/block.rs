@@ -1,6 +1,7 @@
 use crate::{
     blocks::{Slot, Tx, Vote},
     keys::{Hash, Public, Signature},
+    util::Error,
 };
 
 pub struct Block {
@@ -36,7 +37,7 @@ fn merkle_root(hashes: Vec<Hash>) -> Hash {
 }
 
 impl Block {
-    pub fn verify_and_hash(&self) -> Result<Hash, ()> {
+    pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let tx_hash = match self.transactions.len() {
             0 => Hash::zero(),
             1 => self.transactions[0].verify_and_hash()?,

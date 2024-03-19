@@ -1,5 +1,8 @@
 use super::Pair;
-use crate::keys::{Hash, Public, Signature};
+use crate::{
+    keys::{Hash, Public, Signature},
+    util::Error,
+};
 
 pub struct Vote {
     pub from: Public,
@@ -9,7 +12,7 @@ pub struct Vote {
 }
 
 impl Vote {
-    pub fn verify_and_hash(&self) -> Result<Hash, ()> {
+    pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let mut bytes = [0u8; 112];
         bytes[0..32].copy_from_slice(self.from.as_bytes());
         bytes[32..40].copy_from_slice(&self.left.slot.to_bytes());

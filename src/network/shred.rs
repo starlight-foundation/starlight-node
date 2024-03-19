@@ -5,10 +5,16 @@ use std::{
 
 use bitvec::vec::BitVec;
 use once_cell::sync::Lazy;
-use reed_solomon_erasure::{galois_8::{Field, ReedSolomon}, ReconstructShard};
+use reed_solomon_erasure::{
+    galois_8::{Field, ReedSolomon},
+    ReconstructShard,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::util::{UninitializedBitVec, UninitializedVec};
+use crate::{
+    keys::HashBuilder,
+    util::{UninitializedBitVec, UninitializedVec},
+};
 
 struct ReedSolomonCache {
     cache: Mutex<HashMap<(usize, usize), Arc<ReedSolomon>>>,
@@ -20,19 +26,15 @@ impl ReedSolomonCache {
             cache: Mutex::new(HashMap::new()),
         }
     }
-    fn get(
-        &self,
-        data_shards: usize,
-        parity_shards: usize,
-    ) -> Arc<ReedSolomon> {
-        let key = (data_shards, parity_shards);
+    fn get(&self, data_shreds: usize, parity_shreds: usize) -> Arc<ReedSolomon> {
+        let key = (data_shreds, parity_shreds);
         {
             let mut cache = self.cache.lock().unwrap();
             if let Some(entry) = cache.get(&key) {
                 return entry.clone();
             }
         }
-        let entry = ReedSolomon::new(data_shards, parity_shards).unwrap();
+        let entry = ReedSolomon::new(data_shreds, parity_shreds).unwrap();
         let entry = Arc::new(entry);
         {
             let entry = entry.clone();
@@ -80,6 +82,14 @@ const DATA_SHREDS_PER_FULL_BATCH: usize = 32;
 const TOTAL_SHREDS_PER_FULL_BATCH: usize = DATA_TO_TOTAL[DATA_SHREDS_PER_FULL_BATCH];
 
 impl Shred {
+    pub fn hash_into(&self, hb: &mut HashBuilder) {
+        hb.update(&self.n_batches.to_le_bytes());
+        hb.update(&self.n_data_shreds.to_le_bytes());
+        hb.update(&self.overall_data_size.to_le_bytes());
+        hb.update(&self.batch_index.to_le_bytes());
+        hb.update(&self.shred_index.to_le_bytes());
+        hb.update(&self.data);
+    }
     pub fn shred(data: &[u8], chunk_len: u32) -> Vec<Self> {
         if data.len() == 0 || chunk_len == 0 {
             return Vec::new();
@@ -87,38 +97,38 @@ impl Shred {
 
         // Calculate the number of data shreds based on the data length and chunk length
         let n_data_shreds = data.len().div_ceil(chunk_len as usize);
-        
+
         // Calculate the number of batches based on the number of data shreds
         let n_batches = n_data_shreds.div_ceil(DATA_SHREDS_PER_FULL_BATCH);
-        
+
         // Calculate the number of data shreds for the last batch
         let n_data_shreds_for_last_batch = n_data_shreds % DATA_SHREDS_PER_FULL_BATCH;
-        
+
         // Calculate the total number of shreds for the last batch
         let n_total_shreds_for_last_batch = DATA_TO_TOTAL[n_data_shreds_for_last_batch];
-        
+
         // Calculate the total number of shreds
         let shred_count = {
             let n_full_batches = n_data_shreds / DATA_SHREDS_PER_FULL_BATCH;
             let n_shreds_for_last_batch = DATA_TO_TOTAL[n_data_shreds_for_last_batch];
             (n_full_batches * TOTAL_SHREDS_PER_FULL_BATCH) + n_shreds_for_last_batch
         };
-        
+
         // Create an iterator to chunk the data into shreds
         let mut chunks = data.chunks(chunk_len as usize);
-        
+
         // Create a vector to store the shreds with the calculated length
         let mut shreds = Vec::uninitialized(shred_count);
-        
+
         // Initialize variables for batch index and start index
         let mut batch_index = 0;
         let mut start_index = 0;
-        
+
         // Iterate over the shreds and process them in batches
         while start_index < shreds.len() {
             // Calculate the tentative end total index for the current batch
             let end_total_index_tentative = start_index + TOTAL_SHREDS_PER_FULL_BATCH;
-            
+
             // Determine the number of total and data shreds for the current batch
             let (n_total, n_data) = if end_total_index_tentative > shreds.len() {
                 (n_total_shreds_for_last_batch, n_data_shreds_for_last_batch)
@@ -128,11 +138,11 @@ impl Shred {
 
             // Calculate the number of coding shreds for the current batch
             let n_coding = n_total - n_data;
-            
+
             // Calculate the end total index and end data index for the current batch
             let end_total_index = start_index + n_total;
             let end_data_index = start_index + n_data;
-            
+
             // Populate the data shreds with the actual data
             for i in start_index..end_data_index {
                 let shred = Self {
@@ -150,7 +160,7 @@ impl Shred {
                 };
                 shreds[i] = shred;
             }
-            
+
             // Populate the coding shreds with empty data
             for i in end_data_index..end_total_index {
                 let shred = Self {
@@ -159,24 +169,24 @@ impl Shred {
                     overall_data_size: data.len() as u32,
                     batch_index: batch_index as u32,
                     shred_index: (i - start_index) as u32,
-                    data: Vec::uninitialized(chunk_len as usize)
+                    data: Vec::uninitialized(chunk_len as usize),
                 };
                 shreds[i] = shred;
             }
-            
+
             // Get the Reed-Solomon encoder from the cache based on the number of data and coding shreds
-            let reed_solomon = REED_SOLOMON_CACHE.get(
-                n_data, n_coding
-            );
-            
+            let reed_solomon = REED_SOLOMON_CACHE.get(n_data, n_coding);
+
             // Encode the shreds using the Reed-Solomon encoder
-            reed_solomon.encode(&mut shreds[start_index..end_total_index]).unwrap();
-            
+            reed_solomon
+                .encode(&mut shreds[start_index..end_total_index])
+                .unwrap();
+
             // Update the start index and batch index for the next iteration
             start_index = end_total_index;
             batch_index += 1;
         }
-        
+
         // Return the shredded data
         shreds
     }
@@ -210,7 +220,10 @@ impl ReconstructShard<Field> for BatchItem {
     fn get_or_initialize(
         &mut self,
         len: usize,
-    ) -> Result<&mut [<Field as reed_solomon_erasure::Field>::Elem], Result<&mut [<Field as reed_solomon_erasure::Field>::Elem], reed_solomon_erasure::Error>> {
+    ) -> Result<
+        &mut [<Field as reed_solomon_erasure::Field>::Elem],
+        Result<&mut [<Field as reed_solomon_erasure::Field>::Elem], reed_solomon_erasure::Error>,
+    > {
         if self.0.is_empty() {
             self.0 = Vec::uninitialized(len);
             Err(Ok(&mut self.0))
@@ -225,7 +238,7 @@ struct Batch {
     n_provided: u32,
     n_data: u32,
     chunk_len: u32,
-    shreds: Vec<BatchItem>
+    shreds: Vec<BatchItem>,
 }
 impl Batch {
     pub fn new() -> Self {
@@ -234,7 +247,7 @@ impl Batch {
             n_provided: 0,
             n_data: u32::MAX,
             chunk_len: u32::MAX,
-            shreds: Vec::new()
+            shreds: Vec::new(),
         }
     }
     pub fn need_shred(&self, shred_index: usize) -> bool {
@@ -243,7 +256,7 @@ impl Batch {
         }
         match self.shreds.get(shred_index) {
             Some(shred) => shred.0.is_empty(),
-            None => false
+            None => false,
         }
     }
     pub fn try_provide(&mut self, shred: Shred) -> bool {
@@ -253,7 +266,8 @@ impl Batch {
             self.chunk_len = chunk_len;
             let n_total = DATA_TO_TOTAL[self.n_data as usize];
             self.shreds.reserve(n_total);
-            self.shreds.extend((0..n_total).map(|_| BatchItem(Vec::new())));
+            self.shreds
+                .extend((0..n_total).map(|_| BatchItem(Vec::new())));
             self.initialized = true;
         }
         if chunk_len != self.chunk_len {
@@ -282,8 +296,8 @@ impl Batch {
             return false;
         }
         let reed_solomon = REED_SOLOMON_CACHE.get(
-            self.n_data as usize, 
-            DATA_TO_TOTAL[self.n_data as usize] - self.n_data as usize
+            self.n_data as usize,
+            DATA_TO_TOTAL[self.n_data as usize] - self.n_data as usize,
         );
         reed_solomon.reconstruct_data(&mut self.shreds).unwrap();
         for shred in self.shreds[..self.n_data as usize].iter() {
@@ -298,7 +312,7 @@ pub struct ShredList {
     max_data_size: u32,
     claimed_data_size: u32,
     ready: BitVec,
-    batches: Vec<Batch>
+    batches: Vec<Batch>,
 }
 
 impl ShredList {
@@ -309,7 +323,7 @@ impl ShredList {
             max_data_size,
             claimed_data_size: 0,
             ready: BitVec::new(),
-            batches
+            batches,
         }
     }
     pub fn try_provide(&mut self, shred: Shred) -> bool {
@@ -319,7 +333,8 @@ impl ShredList {
         let data_size_bound = n_batches * n_data * chunk_len;
         let claimed_data_size = shred.overall_data_size;
         if data_size_bound > self.max_data_size as usize
-        || (n_batches == 0 || n_data == 0 || chunk_len == 0) {
+            || (n_batches == 0 || n_data == 0 || chunk_len == 0)
+        {
             return false;
         }
         if !self.initialized {
@@ -354,9 +369,7 @@ impl ShredList {
         if self.batches.len() == 0 {
             return Some(Vec::new());
         }
-        let mut data = Vec::with_capacity(
-            self.batches.len() * self.batches[0].data_size()
-        );
+        let mut data = Vec::with_capacity(self.batches.len() * self.batches[0].data_size());
         for batch in self.batches.iter_mut() {
             assert_eq!(batch.try_reconstruct(&mut data), true);
         }
@@ -369,8 +382,8 @@ impl ShredList {
         }
         match self.ready.get(batch_index).map(|x| !!x) {
             Some(true) => return false,
-            Some(false) => {},
-            None => return false
+            Some(false) => {}
+            None => return false,
         }
         let batch = &self.batches[batch_index];
         if batch.need_shred(shred_index) {
@@ -395,7 +408,7 @@ mod tests {
 
         // Shred the data
         let shreds = Shred::shred(&data, chunk_len);
-        
+
         // Create a ShredList and provide the shreds
         let mut shred_list = ShredList::new(MAX_DATA_SIZE);
         for shred in shreds {
@@ -417,7 +430,7 @@ mod tests {
         // Shred the data
         let mut shreds = Shred::shred(&data, chunk_len);
         assert_eq!(shreds.len(), DATA_TO_TOTAL[5]);
-        
+
         // Remove some shreds to simulate missing shreds
         shreds.remove(2);
         shreds.remove(3);

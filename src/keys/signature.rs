@@ -4,22 +4,19 @@ use crate::hexify;
 /// A ed25519+blake2 signature that can be generated with [Private](crate::Private) and
 /// checked with [Public](crate::Public).
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Signature(pub [u8; 64]);
+#[repr(align(8))]
+pub struct Signature([u8; 64]);
 
 hexify!(Signature, "signature");
 
 impl Signature {
     pub const LEN: usize = 64;
 
-    pub fn zero() -> Self {
-        Self([0u8; 64])
-    }
-
     pub fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)
     }
 
-    pub fn internal(&self) -> Result<ed25519_dalek_blake2_feeless::Signature, ()> {
+    pub(super) fn internal(&self) -> Result<ed25519_dalek_blake2_feeless::Signature, ()> {
         ed25519_dalek_blake2_feeless::Signature::from_bytes(&self.0).or(Err(()))
     }
 }

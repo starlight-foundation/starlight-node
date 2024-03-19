@@ -4,8 +4,10 @@ use crate::keys::Public;
 use leapfrog::LeapMap;
 
 pub struct Bank {
-    accounts: LeapMap<Public, Account>, // A map storing accounts indexed by public keys
-    batch_factory: BatchFactory,        // A factory for generating unique batch IDs
+    // A map storing accounts indexed by public keys
+    accounts: LeapMap<Public, Account>,
+    // A factory for generating unique batch IDs
+    batch_factory: BatchFactory,
 }
 
 impl Bank {
@@ -16,24 +18,27 @@ impl Bank {
         }
     }
 
-    /// Get a globally unique batch ID.
+    // Get a globally unique batch ID
     pub fn new_batch(&self) -> Batch {
         self.batch_factory.next()
     }
 
-    /// Update an account by applying the provided function
+    // Update an account by applying the provided function
     fn update_account<T, F: FnMut(&mut Account) -> Result<T, ()>>(
         &self,
         key: &Public,
         mut f: F,
     ) -> Result<T, ()> {
-        let mut a = self.accounts.get_mut(key).ok_or(())?; // Get a mutable reference to the account or return an error if it doesn't exist
+        // Get a mutable reference to the account or return an error if it doesn't exist
+        let mut a = self.accounts.get_mut(key).ok_or(())?;
         let mut r = Err(());
-        a.update(|a| r = f(a)).unwrap(); // Update the account using the provided function and store the result in 'r'
-        r // Return the result of the account update
+        // Update the account using the provided function and store the result in 'r'
+        a.update(|a| r = f(a)).unwrap();
+        // Return the result of the account update
+        r
     }
 
-    /// Insert a new account or update an existing one
+    // Insert a new account or update an existing one
     fn insert_or_update_account<T, F: FnMut(&mut Account) -> T, G: FnMut() -> Account>(
         &self,
         key: &Public,
@@ -43,111 +48,139 @@ impl Bank {
         loop {
             if let Some(mut a) = self.accounts.get_mut(key) {
                 let mut r = None;
-                a.update(|a| r = Some(f(a))).unwrap(); // Update the existing account using the provided function 'f'
-                return r; // Return the result of the account update
+                // Update the existing account using the provided function 'f'
+                a.update(|a| r = Some(f(a))).unwrap();
+                // Return the result of the account update
+                return r;
             } else if self.accounts.try_insert(*key, default()).is_none() {
-                return None; // Return None if the account insertion fails
+                // Return None if the account insertion fails
+                return None;
             }
         }
     }
 
+    // Get the account associated with the given public key
     fn get_account(&self, key: &Public) -> Option<Account> {
-        self.accounts.get(key)?.value() // Get the account associated with the given public key
+        self.accounts.get(key)?.value()
     }
 
-    /// Process the send half of a transaction
+    // Process the send half of a transaction
     fn process_send(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
         if tx.kind == TxKind::ChangeRepresentative {
             self.update_account(&tx.from, |a| {
+                // Return an error if the nonce or batch doesn't match
                 if a.nonce != tx.nonce || a.batch == batch {
-                    return Err(()); // Return an error if the nonce or batch doesn't match
+                    return Err(());
                 }
-                a.nonce += 1; // Increment the account nonce
-                a.batch = batch; // Update the account batch
+                // Increment the account nonce
+                a.nonce += 1;
+                // Update the account batch
+                a.batch = batch;
                 Ok(())
             })?;
         }
         self.update_account(&tx.from, |a| {
+            // Return an error if the nonce, balance, or batch doesn't match
             if a.nonce != tx.nonce || a.latest_balance <= tx.amount || a.batch == batch {
-                return Err(()); // Return an error if the nonce, balance, or batch doesn't match
+                return Err(());
             }
             let new_balance = a.latest_balance - tx.amount;
+            // Return an error if the new balance doesn't match the expected balance
             if new_balance != tx.balance {
-                return Err(()); // Return an error if the new balance doesn't match the expected balance
+                return Err(());
             }
-            a.nonce += 1; // Increment the account nonce
-            a.latest_balance -= tx.amount; // Deduct the transaction amount from the account balance
-            a.batch = batch; // Update the account batch
+            // Increment the account nonce
+            a.nonce += 1;
+            // Deduct the transaction amount from the account balance
+            a.latest_balance -= tx.amount;
+            // Update the account batch
+            a.batch = batch;
             Ok(())
         })?;
         Ok(())
     }
 
-    /// Process the receive half of the transaction
+    // Process the receive half of the transaction
     fn process_recv(&self, tx: &Tx) {
+        // Skip processing for change representative transactions
         if tx.kind == TxKind::ChangeRepresentative {
-            return; // Skip processing for change representative transactions
+            return;
         }
         self.insert_or_update_account(
             &tx.to,
-            || Account::with_latest_balance(tx.amount), // Create a new account with the transaction amount as the latest balance
+            // Create a new account with the transaction amount as the latest balance
+            || Account::with_latest_balance(tx.amount),
             |a| {
-                a.latest_balance += tx.amount; // Add the transaction amount to the account balance
+                // Add the transaction amount to the account balance
+                a.latest_balance += tx.amount;
             },
         );
     }
 
+    // Revert a transaction
     fn revert_transaction(&self, tx: &Tx) {
         if tx.kind == TxKind::ChangeRepresentative {
             self.update_account(&tx.from, |a| {
-                a.nonce -= 1; // Decrement the account nonce
+                // Decrement the account nonce
+                a.nonce -= 1;
                 Ok(())
             })
             .unwrap();
             return;
         }
         self.update_account(&tx.from, |a| {
-            a.nonce -= 1; // Decrement the account nonce
-            a.latest_balance += tx.amount; // Add the transaction amount back to the account balance
+            // Decrement the account nonce
+            a.nonce -= 1;
+            // Add the transaction amount back to the account balance
+            a.latest_balance += tx.amount;
             Ok(())
         })
         .unwrap();
         let remove_account = self
             .update_account(&tx.to, |a| {
-                a.latest_balance -= tx.amount; // Deduct the transaction amount from the account balance
-                Ok(a.latest_balance == Amount::zero() && a.nonce == 0) // Check if the account should be removed
+                // Deduct the transaction amount from the account balance
+                a.latest_balance -= tx.amount;
+                // Check if the account should be removed
+                Ok(a.latest_balance == Amount::zero() && a.nonce == 0)
             })
             .unwrap();
         if remove_account {
-            self.accounts.remove(&tx.to); // Remove the account if it has zero balance and nonce
+            // Remove the account if it has zero balance and nonce
+            self.accounts.remove(&tx.to);
         }
     }
 
+    // Finalize a transaction
     fn finalize_transaction(&self, tx: &Tx) {
         match tx.kind {
             TxKind::Normal => {
                 let from_rep = self
                     .update_account(&tx.from, |a| {
-                        a.finalized_balance -= tx.amount; // Deduct the transaction amount from the sender's finalized balance
+                        // Deduct the transaction amount from the sender's finalized balance
+                        a.finalized_balance -= tx.amount;
                         Ok(a.rep)
                     })
                     .unwrap();
                 let to_rep = self
                     .update_account(&tx.to, |a| {
-                        a.finalized_balance += tx.amount; // Add the transaction amount to the receiver's finalized balance
+                        // Add the transaction amount to the receiver's finalized balance
+                        a.finalized_balance += tx.amount;
                         Ok(a.rep)
                     })
                     .unwrap();
                 self.update_account(&from_rep, |a| {
-                    a.weight -= tx.amount; // Deduct the transaction amount from the representative's weight
+                    // Deduct the transaction amount from the representative's weight
+                    a.weight -= tx.amount;
                     Ok(())
                 })
                 .unwrap();
                 self.insert_or_update_account(
                     &to_rep,
-                    || Account::with_weight(tx.amount), // Create a new account with the transaction amount as the weight
+                    // Create a new account with the transaction amount as the weight
+                    || Account::with_weight(tx.amount),
                     |a| {
-                        a.weight += tx.amount; // Add the transaction amount to the representative's weight
+                        // Add the transaction amount to the representative's weight
+                        a.weight += tx.amount;
                     },
                 );
             }
@@ -155,68 +188,81 @@ impl Bank {
                 let (prev_rep, finalized_balance) = self
                     .update_account(&tx.from, |a| {
                         let prev_rep = a.rep;
-                        a.rep = tx.to; // Update the account representative to the new representative
+                        // Update the account representative to the new representative
+                        a.rep = tx.to;
                         Ok((prev_rep, a.finalized_balance))
                     })
                     .unwrap();
                 _ = self.update_account(&prev_rep, |a| {
-                    a.weight -= finalized_balance; // Deduct the finalized balance from the previous representative's weight
+                    // Deduct the finalized balance from the previous representative's weight
+                    a.weight -= finalized_balance;
                     Ok(())
                 });
                 self.insert_or_update_account(
                     &tx.to,
-                    || Account::with_weight(tx.amount), // Create a new account with the transaction amount as the weight
+                    // Create a new account with the transaction amount as the weight
+                    || Account::with_weight(tx.amount),
                     |a| {
-                        a.weight += tx.amount; // Add the transaction amount to the new representative's weight
+                        // Add the transaction amount to the new representative's weight
+                        a.weight += tx.amount;
                     },
                 );
             }
         }
     }
 
-    /// Process a transaction
+    // Process a transaction
     pub fn process_transaction(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
-        self.process_send(tx, batch)?; // Process the send half of the transaction
-        self.process_recv(tx); // Process the receive half of the transaction
+        // Process the send half of the transaction
+        self.process_send(tx, batch)?;
+        // Process the receive half of the transaction
+        self.process_recv(tx);
         Ok(())
     }
 
-    /// Process a block of transactions
+    // Process a block of transactions
     pub fn process_block(&self, block: &Block) -> Result<(), ()> {
-        let batch = self.new_batch(); // Generate a new batch ID
+        // Generate a new batch ID
+        let batch = self.new_batch();
         for tx in block.transactions.iter() {
-            self.process_send(tx, batch)?; // Process the send half of each transaction in the block
+            // Process the send half of each transaction in the block
+            self.process_send(tx, batch)?;
         }
         for tx in block.transactions.iter() {
-            self.process_recv(tx); // Process the receive half of each transaction in the block
+            // Process the receive half of each transaction in the block
+            self.process_recv(tx);
         }
         Ok(())
     }
 
-    /// Revert a block of transactions
+    // Revert a block of transactions
     pub fn revert_block(&self, block: &Block) -> Result<(), ()> {
         for tx in block.transactions.iter() {
-            self.revert_transaction(tx); // Revert each transaction in the block
+            // Revert each transaction in the block
+            self.revert_transaction(tx);
         }
         Ok(())
     }
 
+    // Finalize a block of transactions
     pub fn finalize_block(&self, block: &Block) -> Result<(), ()> {
         for tx in block.transactions.iter() {
-            self.finalize_transaction(tx); // Finalize each transaction in the block
+            // Finalize each transaction in the block
+            self.finalize_transaction(tx);
         }
         Ok(())
     }
 
-    /// Get the latest balance, finalized balance, and nonce for an account
+    // Get the latest balance, finalized balance, and nonce for an account
     pub fn get_latest_finalized_and_nonce(&self, public: &Public) -> (Amount, Amount, u64) {
         match self.get_account(public) {
             Some(account) => {
+                // Return the latest balance, finalized balance, and nonce of the account
                 (
                     account.latest_balance,
                     account.finalized_balance,
                     account.nonce,
-                ) // Return the latest balance, finalized balance, and nonce of the account
+                )
             }
             None => (Amount::zero(), Amount::zero(), 0), // Return zero values if the account doesn't exist
         }

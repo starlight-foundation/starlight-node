@@ -1,13 +1,16 @@
 // Derived from the pow module of github.com/feeless/feeless@978eba7.
 use super::Difficulty;
 use super::Hash;
+use crate::error;
 use crate::hexify;
+use crate::util::Error;
 use once_cell::sync::Lazy;
 use rand::RngCore;
 use std::convert::TryFrom;
 
 /// The result of some proof of work (PoW). Can verify and inefficiently generate PoW using the CPU.
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(align(8))]
 pub struct Work(pub [u8; 8]);
 
 hexify!(Work, "work");
@@ -69,12 +72,12 @@ impl Work {
         work
     }
 
-    pub fn verify(&self, subject: &Hash, threshold: Difficulty) -> Result<(), ()> {
+    pub fn verify(&self, subject: &Hash, threshold: Difficulty) -> Result<(), Error> {
         let difficulty = self.difficulty(subject);
         if difficulty >= threshold {
             Ok(())
         } else {
-            Err(())
+            Err(error!("not enough work"))
         }
     }
 

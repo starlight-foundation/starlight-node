@@ -14,6 +14,7 @@ static PARAMS: Lazy<Params> = Lazy::new(|| {
 static STATE: Lazy<State> = Lazy::new(|| PARAMS.to_state());
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(align(8))]
 pub struct Hash([u8; 32]);
 
 hexify!(Hash, "hash");
@@ -48,7 +49,7 @@ impl HashBuilder {
         self.0.update(data);
     }
 
-    pub fn finalize(&self) -> Hash {
+    pub fn finish(&self) -> Hash {
         let mut v = [0u8; 32];
         Hash(self.0.finalize().as_bytes().try_into().unwrap())
     }
@@ -59,7 +60,7 @@ impl Write for HashBuilder {
         self.update(buf);
         Ok(buf.len())
     }
-    
+
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }

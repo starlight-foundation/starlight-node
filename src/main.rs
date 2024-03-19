@@ -5,6 +5,4 @@ mod node;
 mod rpc;
 mod util;
 
-fn main() {
-    
-}
+fn main() {}

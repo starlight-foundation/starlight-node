@@ -13,20 +13,19 @@ thread_local! {
 
 pub fn compress(bytes: &[u8]) -> Vec<u8> {
     let mut output = Vec::uninitialized(zstd_safe::compress_bound(bytes.len()));
-    let n = ZSTD_CCTX.with(|cctx| cctx.borrow_mut().compress(
-        &mut output[..], bytes, ZSTD_LEVEL
-    )).unwrap();
+    let n = ZSTD_CCTX
+        .with(|cctx| {
+            cctx.borrow_mut()
+                .compress(&mut output[..], bytes, ZSTD_LEVEL)
+        })
+        .unwrap();
     output.truncate(n);
     output
 }
 
 pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, zstd_safe::ErrorCode> {
-    let mut output = Vec::uninitialized(
-        zstd_safe::decompress_bound(bytes)? as usize
-    );
-    let n = ZSTD_DCTX.with(|dctx| dctx.borrow_mut().decompress(
-        &mut output[..], bytes
-    ))?;
+    let mut output = Vec::uninitialized(zstd_safe::decompress_bound(bytes)? as usize);
+    let n = ZSTD_DCTX.with(|dctx| dctx.borrow_mut().decompress(&mut output[..], bytes))?;
     output.truncate(n);
     Ok(output)
 }
@@ -48,6 +47,4 @@ mod tests {
         let data = b"wt2gh2giojamonguspotion";
         assert!(decompress(data).is_err());
     }
-
 }
-

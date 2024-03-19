@@ -1,16 +1,17 @@
 mod center_map;
+mod compress;
+mod config;
 mod logical;
+mod models;
 mod network;
-mod peer;
 mod shred;
 mod version;
-mod compress;
 
 use center_map::{CenterMap, CenterMapValue};
-use logical::Logical;
-use peer::Peer;
+use compress::{compress, decompress};
+use models::{Msg, Peer, ShredMsg, TelemetryMsg};
 use shred::Shred;
 use version::Version;
-use compress::{compress, decompress};
 
+pub use logical::Logical;
 pub use network::Network;
