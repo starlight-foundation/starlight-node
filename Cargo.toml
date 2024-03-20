@@ -25,3 +25,4 @@ reed-solomon-erasure = "6.0.0"
 itertools = "0.12.1"
 zstd-safe = { version = "7.0.0", features = ["experimental"] }
 static_init = "1.0.3"
+petgraph = { version = "0.6.4", features = ["stable_graph"], default_features = false }

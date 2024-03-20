@@ -97,27 +97,29 @@ impl<H: Hash + Eq + Clone, B: ChainBlock<H>> Chain<H, B> {
 
         Ok(())
     }
-    /// Iterate over all ancestors of the block denoted by `hash`, starting at `hash.prev` and working backwards.
+    /// Iterate over the block denoted by `hash`, and all its ancestors.
+    /// Starts at `hash` and works backwards.
     /// Returns `None` if the block denoted by `hash` does not exist.
     /// Safety: No blocks can be modified while the iterator is active
-    pub fn try_iter_ancestors(&self, hash: H) -> Option<impl Iterator<Item = &B>> {
+    pub fn try_iter_block_and_ancestors(&self, hash: H) -> Option<impl Iterator<Item = &B>> {
         let block = self.blocks.get(&hash)?;
-        Some(std::iter::successors(block.borrow().prev.clone(), |x| {
+        Some(std::iter::successors(Some(block.clone()), |x| {
             x.borrow().prev.clone()
         }).map(|x| unsafe { self.cvt_ref(&x) }))
     }
 
-    /// Iterate over all descendants of the block denoted by `hash`.
+    /// Iterate over the block denoted by `hash`, and all its descendants.
+    /// Starts at `hash` and works forwards.
     /// Returns `None` if the block denoted by `hash` does not exist.
     /// Safety: No blocks can be modified while the iterator is active
-    pub fn try_iter_descendants(&self, hash: H) -> Option<impl Iterator<Item = &B>> {
+    pub fn try_iter_block_and_descendants(&self, hash: H) -> Option<impl Iterator<Item = &B>> {
         let block = self.blocks.get(&hash)?;
         let mut descendants = vec![Rc::clone(&block)];
         let mut next_blocks = vec![block.borrow().next.clone()];
 
         while !next_blocks.is_empty() {
             let mut new_next_blocks = Vec::new();
-            for next_block in next_blocks.drain(..) {
+            for next_block in next_blocks {
                 if let Some(next_block) = next_block {
                     descendants.push(Rc::clone(&next_block));
                     new_next_blocks.push(next_block.borrow().next.clone());
@@ -129,7 +131,7 @@ impl<H: Hash + Eq + Clone, B: ChainBlock<H>> Chain<H, B> {
             next_blocks = new_next_blocks;
         }
 
-        Some(descendants.into_iter().skip(1).map(|x| unsafe { self.cvt_ref(&x) }))
+        Some(descendants.into_iter().map(|x| unsafe { self.cvt_ref(&x) }))
     }
 
     /// Get the common ancestor of the two blocks denoted by `hash1` and `hash2`, or None if one does not exist.
