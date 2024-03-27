@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     keys::HashBuilder,
-    util::{UninitializedBitVec, UninitializedVec},
+    util::{UninitBitVec, UninitVec},
 };
 
 // Maps number of data shreds to the optimal erasure batch size which has the
@@ -131,19 +131,19 @@ impl Shred {
         let mut chunks = data.chunks(chunk_len as usize);
 
         // Create a vector to store the shreds with the calculated length
-        let mut shreds = Vec::uninitialized(shred_count);
+        let mut shreds = Vec::with_capacity(shred_count);
 
         // Initialize variables for batch index and start index
         let mut batch_index = 0;
         let mut start_index = 0;
 
         // Iterate over the shreds and process them in batches
-        while start_index < shreds.len() {
+        while start_index < shred_count {
             // Calculate the tentative end total index for the current batch
             let end_total_index_tentative = start_index + TOTAL_SHREDS_PER_FULL_BATCH;
 
             // Determine the number of total and data shreds for the current batch
-            let (n_total, n_data) = if end_total_index_tentative > shreds.len() {
+            let (n_total, n_data) = if end_total_index_tentative > shred_count {
                 (n_total_shreds_for_last_batch, n_data_shreds_for_last_batch)
             } else {
                 (TOTAL_SHREDS_PER_FULL_BATCH, DATA_SHREDS_PER_FULL_BATCH)
@@ -171,7 +171,7 @@ impl Shred {
                         v
                     },
                 };
-                shreds[i] = shred;
+                shreds.push(shred);
             }
 
             // Populate the coding shreds with empty data
@@ -182,9 +182,12 @@ impl Shred {
                     overall_data_size: data.len() as u32,
                     batch_index: batch_index as u32,
                     shred_index: (i - start_index) as u32,
-                    data: Vec::uninitialized(chunk_len as usize),
+                    // safety: not read by RSE
+                    data: unsafe {
+                        Vec::uninit(chunk_len as usize)
+                    }
                 };
-                shreds[i] = shred;
+                shreds.push(shred);
             }
 
             // Get the Reed-Solomon encoder from the cache based on the number of data and coding shreds
@@ -199,6 +202,8 @@ impl Shred {
             start_index = end_total_index;
             batch_index += 1;
         }
+
+        assert_eq!(shreds.len(), shred_count as usize);
 
         // Return the shredded data
         shreds
@@ -245,7 +250,10 @@ impl ReconstructShard<Field> for BatchItem {
         Result<&mut [<Field as reed_solomon_erasure::Field>::Elem], reed_solomon_erasure::Error>,
     > {
         if self.0.is_empty() {
-            self.0 = Vec::uninitialized(len);
+            // safety: not read by RSE
+            self.0 = unsafe {
+                Vec::uninit(len)
+            };
             Err(Ok(&mut self.0))
         } else {
             Ok(&mut self.0)
@@ -413,7 +421,10 @@ impl ShredList {
             self.batches.reserve(n_batches);
             self.batches.extend((0..n_batches).map(|_| Batch::new()));
             self.claimed_data_size = claimed_data_size;
-            self.ready = BitVec::uninitialized(n_batches);
+            // safety: immediately zeroed
+            self.ready = unsafe {
+                BitVec::uninit(n_batches)
+            };
             self.ready.as_raw_mut_slice().fill(0);
             self.initialized = true;
         }

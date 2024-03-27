@@ -66,12 +66,13 @@ pub async fn start() {
         shred_msg_tx,
         shred_msg_rx,
         VERSION,
-        config.allow_peers_with_private_ip_addresses
+        config.allow_peers_with_private_ip_addresses,
+        config.allow_peers_with_node_external_ip_address,
     ).await.unwrap();
     log_info!("SLP listening on udp://{}", config.node_bind_endpoint);
     log_info!("SLP external endpoint is udp://{}", config.node_external_endpoint);
     if config.node_external_endpoint.addr == [127, 0, 0, 1] {
-        log_warn!("SLP external endpoint is localhost; this node will not be able to communicate over the internet");
+        log_warn!("SLP external endpoint is localhost; this node will not be able to communicate over the Internet");
     }
     network.run().await.unwrap();
 }

@@ -31,34 +31,34 @@ pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
     bincode::deserialize(bytes).map_err(Into::into)
 }
 
-pub trait UninitializedVec<T: Default> {
-    fn uninitialized(len: usize) -> Vec<T> {
+pub trait UninitVec<T: Copy> {
+    unsafe fn uninit(len: usize) -> Vec<T> {
         let mut v = Vec::with_capacity(len);
-        if cfg!(debug_assertions) {
-            v.extend((0..len).map(|_| T::default()));
-        } else {
-            unsafe {
-                v.set_len(len);
-            }
-        }
+        v.set_len(len);
         v
     }
 }
 
-impl<T: Default> UninitializedVec<T> for Vec<T> {}
+impl<T: Copy> UninitVec<T> for Vec<T> {}
 
-pub trait UninitializedBitVec<T: BitStore, O: BitOrder> {
-    fn uninitialized(len: usize) -> BitVec<T, O> {
+pub trait UninitBitVec<T: BitStore, O: BitOrder> {
+    unsafe fn uninit(len: usize) -> BitVec<T, O> {
         let mut v = BitVec::with_capacity(len);
-        if cfg!(debug_assertions) {
-            v.extend((0..len).map(|_| false));
-        } else {
-            unsafe {
-                v.set_len(len);
-            }
+        v.set_len(len);
+        v
+    }
+}
+
+pub trait DefaultInitVec<T: Default> {
+    fn default_init(len: usize) -> Vec<T> {
+        let mut v = Vec::with_capacity(len);
+        for _ in 0..len {
+            v.push(T::default());
         }
         v
     }
 }
 
-impl<T: BitStore, O: BitOrder> UninitializedBitVec<T, O> for BitVec<T, O> {}
+impl<T: Default> DefaultInitVec<T> for Vec<T> {}
+
+impl<T: BitStore, O: BitOrder> UninitBitVec<T, O> for BitVec<T, O> {}

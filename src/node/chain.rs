@@ -5,8 +5,6 @@ use crate::{protocol::Amount, error, keys::Hash, util::Error};
 use super::{Bank, Block, Dag};
 
 pub struct Chain {
-    /// The longest chain
-    longest_chain: Hash,
     /// The account state of the longest chain
     bank: Bank,
     /// All finalized blocks
@@ -23,7 +21,6 @@ impl Chain {
         let mut active = Dag::new();
         active.insert(genesis_block.hash, genesis_block.clone(), None).unwrap();
         Ok(Self {
-            longest_chain: genesis_block.hash,
             bank: Bank::new(genesis_block.leader),
             finalized: vec![genesis_block],
             active
@@ -32,10 +29,13 @@ impl Chain {
     pub fn add_block(&mut self, block: Rc<Block>) -> Result<bool, Error> {
         let hash = block.hash;
         let previous = block.previous;
+        let prev_longest_chain = self.active.get_longest_chain().unwrap();
         match self.active.insert(hash, block, Some(previous)) {
             Ok(true) => {},
             v => return v,
         }
+        let new_longest_chain = self.active.get_longest_chain().unwrap();
+        
         Ok(true)
     }
 

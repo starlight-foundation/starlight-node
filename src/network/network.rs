@@ -8,7 +8,7 @@ use tokio::{
 };
 
 use crate::{
-    error, keys::{Identity, Private, Public, Signature}, protocol::{Amount, Slot}, util::{self, Error, UninitializedVec, Version}
+    error, keys::{Identity, Private, Public, Signature}, protocol::{Amount, Slot}, util::{self, DefaultInitVec, Error, UninitVec, Version}
 };
 
 use super::{models::TelemetryMsg, CenterMap, Endpoint, Msg, Peer, Shred, ShredMsg};
@@ -40,7 +40,8 @@ pub struct Network {
     shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
     shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
     version: Version,
-    allow_peers_with_private_ip_addresses: bool
+    allow_peers_with_private_ip_addresses: bool,
+    allow_peers_with_node_external_ip_address: bool
 }
 
 impl Network {
@@ -56,7 +57,8 @@ impl Network {
         shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
         shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
         version: Version,
-        allow_peers_with_private_ip_addresses: bool
+        allow_peers_with_private_ip_addresses: bool,
+        allow_peers_with_node_external_ip_address: bool
     ) -> Result<Self, Error> {
         Ok(Self {
             visible_ep,
@@ -68,7 +70,8 @@ impl Network {
             shred_msg_tx,
             shred_msg_rx,
             version,
-            allow_peers_with_private_ip_addresses
+            allow_peers_with_private_ip_addresses,
+            allow_peers_with_node_external_ip_address
         })
     }
 
@@ -117,16 +120,13 @@ impl Network {
         if !tel_msg.version.is_compatible(self.version) {
             return;
         }
-        // if we aren't allowed to contact internal IPs
-        if !self.allow_peers_with_private_ip_addresses {
-            // Block self
-            if tel_msg.ep.addr == self.visible_ep.addr {
-                return;
-            }
-            // Block private IPs
-            if !tel_msg.ep.is_external() {
-                return;
-            }
+        // if we aren't allowed to contact private IPs
+        if !self.allow_peers_with_private_ip_addresses && !tel_msg.ep.is_external() {
+            return;
+        }
+        // if we aren't allowed to communicate with our own IP
+        if !self.allow_peers_with_node_external_ip_address && tel_msg.ep.addr == self.visible_ep.addr {
+            return;
         }
 
         let now = Slot::now();
@@ -180,6 +180,9 @@ impl Network {
 
     // Send telemetry messages at regular intervals
     fn on_interval(&mut self) {
+        // Update my personal weight
+        self.peers.update_center((self.get_weight)(&self.id.public));
+
         // Create a new telemetry message
         let tel_msg = Box::new(TelemetryMsg::sign_new(
             self.id.private,
@@ -215,7 +218,7 @@ impl Network {
 
         // Spawn a task to receive messages from the socket
         tokio::spawn(async move {
-            let mut buf = Vec::uninitialized(MTU);
+            let mut buf = Vec::default_init(MTU);
             loop {
                 let n = match socket.recv_from(&mut buf).await {
                     Ok((n, _)) => n,

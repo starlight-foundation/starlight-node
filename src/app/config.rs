@@ -19,6 +19,7 @@ pub struct Config {
     pub max_less_peers: usize,
     pub max_greater_peers: usize,
     pub allow_peers_with_private_ip_addresses: bool,
+    pub allow_peers_with_node_external_ip_address: bool
 }
 
 impl Config {
@@ -32,6 +33,7 @@ impl Config {
             max_less_peers: 250,
             max_greater_peers: 250,
             allow_peers_with_private_ip_addresses: false,
+            allow_peers_with_node_external_ip_address: false
         }
     }
 }

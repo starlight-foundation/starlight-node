@@ -152,13 +152,8 @@ mod tests {
 
     #[test]
     fn generate_work() {
-        // Let's use a low difficulty in debug mode so doesn't take forever.
-        let threshold = if cfg!(debug_assertions) {
-            Difficulty::from_str("ffff000000000000")
-        } else {
-            Difficulty::from_str("ffffffc000000000")
-        }
-        .unwrap();
+        // Let's use a low difficulty so it doesn't take forever.
+        let threshold = Difficulty::from_str("ffff000000000000").unwrap();
         dbg!(&threshold);
 
         let hash = Hash::random();
