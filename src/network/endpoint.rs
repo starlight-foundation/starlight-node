@@ -1,16 +1,28 @@
-use std::{array::IntoIter, fmt::Display, str::FromStr};
+use std::{array::IntoIter, fmt::Display, net::Ipv4Addr, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{error, util::Error};
 
+/// An ipv4 endpoint
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct Logical {
-    addr: [u8; 4],
-    port: u16,
+pub struct Endpoint {
+    pub addr: [u8; 4],
+    pub port: u16,
 }
 
-impl Logical {
+impl Endpoint {
+    /// Checks if the IP address of the endpoint is an external, Internet-accessible IP.
+    pub fn is_external(&self) -> bool {
+        let addr = Ipv4Addr::from(self.addr);
+        !addr.is_private()
+        && !addr.is_loopback()
+        && !addr.is_multicast()
+        && !addr.is_unspecified()
+        && !addr.is_link_local()
+        && !addr.is_documentation()
+        && !addr.is_broadcast()
+    }
     pub fn to_bytes(&self) -> [u8; 6] {
         let mut bytes = [0u8; 6];
         bytes[0..4].copy_from_slice(&self.addr);
@@ -19,20 +31,20 @@ impl Logical {
     }
 }
 
-impl Display for Logical {
+impl Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", std::net::Ipv4Addr::from(self.addr), self.port)
     }
 }
 
-impl std::net::ToSocketAddrs for Logical {
+impl std::net::ToSocketAddrs for Endpoint {
     type Iter = IntoIter<std::net::SocketAddr, 1>;
     fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
         Ok([self.to_socket_addr()].into_iter())
     }
 }
 
-impl Logical {
+impl Endpoint {
     pub fn to_socket_addr(self) -> std::net::SocketAddr {
         std::net::SocketAddr::V4(std::net::SocketAddrV4::new(
             std::net::Ipv4Addr::from(self.addr),
@@ -41,7 +53,7 @@ impl Logical {
     }
 }
 
-impl From<std::net::SocketAddrV4> for Logical {
+impl From<std::net::SocketAddrV4> for Endpoint {
     fn from(s: std::net::SocketAddrV4) -> Self {
         Self {
             addr: s.ip().octets(),
@@ -50,7 +62,7 @@ impl From<std::net::SocketAddrV4> for Logical {
     }
 }
 
-impl FromStr for Logical {
+impl FromStr for Endpoint {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.split('/').last().unwrap();

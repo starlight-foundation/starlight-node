@@ -1,0 +1,7 @@
+{
+    "github.copilot.advanced": {
+        "debug.overrideProxyUrl": "https://e144542cacd52c9c4bf2fcc997288ce4.loophole.site/",
+        "debug.testOverrideProxyUrl": "https://e144542cacd52c9c4bf2fcc997288ce4.loophole.site/"
+    },
+    "cursor.chat.smoothStreaming": true
+}

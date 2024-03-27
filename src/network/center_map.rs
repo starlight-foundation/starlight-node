@@ -61,17 +61,19 @@ pub struct CenterMap<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> {
     greater: DoublePriorityQueue<K, KeyPriorityIndex<K, P>>, // Set of key-value pairs greater than the center
     list: Vec<KeyValue<K, V>>,                               // List of all key-value pairs
     center: P,                                               // The center priority
-    max_side_len: usize, // Maximum number of elements on each side of the center
+    max_less: usize, // Maximum number of elements less than the center
+    max_greater: usize, // Maximum number of elements greater than the center
 }
 
 impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap<K, P, V> {
-    pub fn new(center: P, max_side_len: usize) -> Self {
+    pub fn new(center: P, max_less: usize, max_greater: usize) -> Self {
         Self {
             less: DoublePriorityQueue::new(),
             greater: DoublePriorityQueue::new(),
             list: Vec::new(),
             center,
-            max_side_len,
+            max_less,
+            max_greater,
         }
     }
 
@@ -80,7 +82,7 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
         let priority = value.priority();
         if priority < self.center {
             // If the priority is less than the center
-            if self.less.len() < self.max_side_len {
+            if self.less.len() < self.max_less {
                 // If there's still room on the "less" side
                 let index = self.list.len();
                 self.list.push(KeyValue {
@@ -120,7 +122,7 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
             }
         } else {
             // If the priority is greater than or equal to the center
-            if self.greater.len() < self.max_side_len {
+            if self.greater.len() < self.max_greater {
                 // If there's still room on the "greater" side
                 let index = self.list.len();
                 self.list.push(KeyValue {
@@ -284,7 +286,7 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
         }
 
         // Trim the "less" set if it exceeds the maximum side length
-        while self.less.len() > self.max_side_len {
+        while self.less.len() > self.max_less {
             let (_, lowest) = self.less.pop_min().unwrap();
             self.list.swap_remove(lowest.index);
             if lowest.index < self.list.len() {
@@ -293,7 +295,7 @@ impl<K: Hash + Eq + Clone + Ord, P: Ord + Clone, V: CenterMapValue<P>> CenterMap
         }
 
         // Trim the "greater" set if it exceeds the maximum side length
-        while self.greater.len() > self.max_side_len {
+        while self.greater.len() > self.max_greater {
             let (_, greatest) = self.greater.pop_max().unwrap();
             self.list.swap_remove(greatest.index);
             if greatest.index < self.list.len() {
@@ -343,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_insert() {
-        let mut map = CenterMap::new(0, 2);
+        let mut map = CenterMap::new(0, 2, 2);
         map.insert(1, 10);
         map.insert(2, 20);
         map.insert(3, 30);
@@ -363,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_contains() {
-        let mut map = CenterMap::new(0, 2);
+        let mut map = CenterMap::new(0, 2, 2);
         map.insert(1, 10);
         map.insert(2, 20);
 
@@ -374,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_get() {
-        let mut map = CenterMap::new(0, 2);
+        let mut map = CenterMap::new(0, 2, 2);
         map.insert(1, 10);
         map.insert(2, 20);
 
@@ -385,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_is_empty() {
-        let mut map: CenterMap<i32, i32, i32> = CenterMap::new(0, 2);
+        let mut map: CenterMap<i32, i32, i32> = CenterMap::new(0, 2, 2);
         assert!(map.is_empty());
         map.insert(1, 10);
         assert!(!map.is_empty());
@@ -393,7 +395,7 @@ mod tests {
 
     #[test]
     fn test_clear() {
-        let mut map = CenterMap::new(0, 2);
+        let mut map = CenterMap::new(0, 2, 2);
         map.insert(1, 10);
         map.insert(2, 20);
         map.clear();
@@ -405,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_index() {
-        let mut map = CenterMap::new(0, 2);
+        let mut map = CenterMap::new(0, 2, 2);
         map.insert(1, 10);
         map.insert(2, 20);
 

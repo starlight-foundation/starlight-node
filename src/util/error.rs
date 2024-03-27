@@ -7,6 +7,14 @@ pub struct Error {
     len: isize,
 }
 
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for Error {}
+
 impl Error {
     pub const fn from_static(s: &'static str) -> Self {
         Self {

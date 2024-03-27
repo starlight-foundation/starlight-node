@@ -3,7 +3,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
-const UNIT: u64 = 10_000_000_000;
+const RAW_PER_UNIT: u64 = 10_000_000_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Amount(u64);
@@ -19,10 +19,10 @@ impl Amount {
         self.0
     }
     pub fn to_unit(self) -> f32 {
-        self.0 as f32 / UNIT as f32
+        self.0 as f32 / RAW_PER_UNIT as f32
     }
     pub fn from_unit(value: f32) -> Self {
-        Amount((value * UNIT as f32) as u64)
+        Amount((value * RAW_PER_UNIT as f32) as u64)
     }
     pub const fn initial_supply() -> Self {
         Amount(i64::MAX as u64)

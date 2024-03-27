@@ -8,61 +8,80 @@ use tokio::{
 };
 
 use crate::{
-    blocks::{Amount, Slot},
-    error,
-    keys::{Private, Public, Signature},
-    util::{self, Error},
+    error, keys::{Identity, Private, Public, Signature}, protocol::{Amount, Slot}, util::{self, Error, UninitializedVec, Version}
 };
 
-use super::{config, models::TelemetryMsg, CenterMap, Logical, Msg, Peer, Shred, ShredMsg};
+use super::{models::TelemetryMsg, CenterMap, Endpoint, Msg, Peer, Shred, ShredMsg};
+
+const MTU: usize = 1280;
+const PEER_UPDATE_INTERVAL: u64 = 15;
+const PEER_TIMEOUT_INTERVAL: u64 = 3 * PEER_UPDATE_INTERVAL;
+fn fanout(n: usize) -> usize {
+    if n < 8 {
+        n
+    } else if n < 16 {
+        n / 2
+    } else if n < 32 {
+        n / 3
+    } else if n < 64 {
+        n / 4
+    } else {
+        (n as f64).powf(0.58) as usize
+    }
+}
 
 pub struct Network {
-    logical: Logical,
-    public: Public,
-    private: Private,
+    visible_ep: Endpoint,
+    id: Identity,
     socket: Arc<UdpSocket>,
     peers: CenterMap<Public, Amount, Peer>,
-    initial_peers: Vec<Logical>,
+    initial_peers: Vec<Endpoint>,
     get_weight: Box<dyn Fn(&Public) -> Amount>,
     shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
     shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
+    version: Version,
+    allow_peers_with_private_ip_addresses: bool
 }
 
 impl Network {
     // Create a new instance of the Network struct
     pub async fn new(
-        logical: Logical,
-        public: Public,
-        private: Private,
-        initial_peers: Vec<Logical>,
-        half_max_peers: usize,
+        bind_ep: Endpoint,
+        visible_ep: Endpoint,
+        id: Identity,
+        initial_peers: Vec<Endpoint>,
+        max_less: usize,
+        max_greater: usize,
         get_weight: Box<dyn Fn(&Public) -> Amount>,
         shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
         shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
+        version: Version,
+        allow_peers_with_private_ip_addresses: bool
     ) -> Result<Self, Error> {
         Ok(Self {
-            logical,
-            public,
-            private,
-            socket: Arc::new(UdpSocket::bind(logical.to_socket_addr()).await?),
-            peers: CenterMap::new(get_weight(&public), half_max_peers),
+            visible_ep,
+            id,
+            socket: Arc::new(UdpSocket::bind(bind_ep.to_socket_addr()).await?),
+            peers: CenterMap::new(get_weight(&id.public), max_less, max_greater),
             initial_peers,
             get_weight,
             shred_msg_tx,
             shred_msg_rx,
+            version,
+            allow_peers_with_private_ip_addresses
         })
     }
 
     // Broadcast a message to a subset of peers using fanout
     fn broadcast_fanout(&mut self, msg: Arc<Vec<u8>>) {
         let mut peer_count = self.peers.len();
-        let mut broadcast_left = config::fanout(peer_count);
+        let mut broadcast_left = fanout(peer_count);
         let mut rng = rand::thread_rng();
         let now = Slot::now();
         while broadcast_left > 0 && peer_count > 0 {
             let i = rng.gen_range(0..peer_count);
             let peer = &self.peers[i];
-            if now.saturating_sub(peer.last_contact) >= config::PEER_TIMEOUT {
+            if now.saturating_sub(peer.last_contact) >= PEER_TIMEOUT_INTERVAL {
                 self.peers.remove_index(i);
                 peer_count -= 1;
                 continue;
@@ -90,18 +109,33 @@ impl Network {
 
     // Handle incoming telemetry messages
     fn on_tel_msg(&mut self, tel_msg: Box<TelemetryMsg>) {
-        // Check if the telemetry message version is compatible
-        if !tel_msg.version.is_compatible(config::VERSION) {
+        // Don't accept telemetry from myself :)
+        if tel_msg.from == self.id.public {
             return;
+        }
+        // Check if the telemetry message version is compatible
+        if !tel_msg.version.is_compatible(self.version) {
+            return;
+        }
+        // if we aren't allowed to contact internal IPs
+        if !self.allow_peers_with_private_ip_addresses {
+            // Block self
+            if tel_msg.ep.addr == self.visible_ep.addr {
+                return;
+            }
+            // Block private IPs
+            if !tel_msg.ep.is_external() {
+                return;
+            }
         }
 
         let now = Slot::now();
         let should_broadcast = match self.peers.get_mut(&tel_msg.from) {
             Some(peer) => {
                 // Update the peer's information if enough time has passed since the last update
-                if now.saturating_sub(peer.last_contact) >= config::PEER_UPDATE {
+                if now.saturating_sub(peer.last_contact) >= PEER_UPDATE_INTERVAL {
                     peer.version = tel_msg.version;
-                    peer.logical = tel_msg.logical;
+                    peer.logical = tel_msg.ep;
                     peer.last_contact = now;
                     true
                 } else {
@@ -114,7 +148,7 @@ impl Network {
                     tel_msg.from,
                     Peer {
                         version: tel_msg.version,
-                        logical: tel_msg.logical,
+                        logical: tel_msg.ep,
                         weight: (self.get_weight)(&tel_msg.from),
                         last_contact: now,
                     },
@@ -125,7 +159,7 @@ impl Network {
         // Broadcast the telemetry message to other peers if necessary
         if should_broadcast {
             let msg = Msg::Tel(tel_msg);
-            let bytes = Arc::new(msg.serialize());
+            let bytes = Arc::new(msg.serialize(MTU));
             self.broadcast_fanout(bytes);
         }
     }
@@ -148,13 +182,13 @@ impl Network {
     fn on_interval(&mut self) {
         // Create a new telemetry message
         let tel_msg = Box::new(TelemetryMsg::sign_new(
-            self.private,
+            self.id.private,
             Slot::now(),
-            self.logical,
-            config::VERSION,
+            self.visible_ep,
+            self.version
         ));
         let msg = Msg::Tel(tel_msg);
-        let bytes = Arc::new(msg.serialize());
+        let bytes = Arc::new(msg.serialize(MTU));
 
         // Broadcast the telemetry message to initial peers or a subset of peers
         if self.peers.is_empty() {
@@ -167,19 +201,21 @@ impl Network {
     // Handle incoming shred messages from the receiver
     fn on_shred_rx(&mut self, shred_msg: Box<ShredMsg>) {
         // Broadcast the shred message to a subset of peers
-        let bytes = Arc::new(Msg::Shred(shred_msg).serialize());
+        let bytes = Arc::new(Msg::Shred(shred_msg).serialize(MTU));
         self.broadcast_fanout(bytes);
     }
 
     // Run the network
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut interval = tokio::time::interval(Duration::from_secs(config::PEER_UPDATE));
+        let mut interval = tokio::time::interval(Duration::from_secs(
+            PEER_UPDATE_INTERVAL
+        ));
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let socket = self.socket.clone();
 
         // Spawn a task to receive messages from the socket
         tokio::spawn(async move {
-            let mut buf = [0; config::MTU];
+            let mut buf = Vec::uninitialized(MTU);
             loop {
                 let n = match socket.recv_from(&mut buf).await {
                     Ok((n, _)) => n,
@@ -191,7 +227,7 @@ impl Network {
                     },
                 };
                 let bytes = &buf[..n];
-                if let Ok(msg) = Msg::deserialize(bytes) {
+                if let Ok(msg) = Msg::deserialize(bytes, MTU) {
                     if msg.verify().is_ok() {
                         tx.send(msg)?;
                     }

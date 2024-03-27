@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 
 const GENESIS_TIME_MS: u64 = 1710290840 * 1000;
 const SLOT_TIME_MS: u64 = 500;
+const EPOCH_SLOT_LENGTH: u64 = 86400;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub struct Slot(u64);
 impl Slot {
-    pub fn genesis() -> Slot {
+    pub fn zero() -> Slot {
         Slot(0)
     }
     pub fn now() -> Slot {

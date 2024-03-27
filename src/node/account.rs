@@ -1,5 +1,5 @@
 use crate::{
-    blocks::{Amount, Slot},
+    protocol::{Amount, Slot},
     keys::Public,
 };
 
@@ -34,6 +34,16 @@ impl Account {
             batch: Batch::null(),
             nonce: 0,
             rep: Public::zero(),
+        }
+    }
+    pub fn genesis(public: Public) -> Self {
+        Self {
+            latest_balance: Amount::initial_supply(),
+            finalized_balance: Amount::initial_supply(),
+            weight: Amount::initial_supply(),
+            batch: Batch::null(),
+            nonce: 0,
+            rep: public,
         }
     }
 }

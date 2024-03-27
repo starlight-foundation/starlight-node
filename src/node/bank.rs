@@ -1,5 +1,5 @@
 use super::{Account, Batch, BatchFactory, Block};
-use crate::blocks::{Amount, Tx, TxKind};
+use crate::protocol::{Amount, Tx, TxKind};
 use crate::keys::Public;
 use leapfrog::LeapMap;
 
@@ -11,9 +11,11 @@ pub struct Bank {
 }
 
 impl Bank {
-    pub fn new() -> Self {
+    pub fn new(genesis: Public) -> Self {
+        let mut accounts = LeapMap::new();
+        accounts.insert(genesis, Account::genesis(genesis));
         Self {
-            accounts: LeapMap::new(),
+            accounts,
             batch_factory: BatchFactory::new(),
         }
     }
@@ -38,7 +40,8 @@ impl Bank {
         r
     }
 
-    // Insert a new account or update an existing one
+    /// Insert a new account or update an existing one
+    /// Returns Some(f()) if the account was updated, None if the account was inserted
     fn insert_or_update_account<T, F: FnMut(&mut Account) -> T, G: FnMut() -> Account>(
         &self,
         key: &Public,
@@ -53,7 +56,7 @@ impl Bank {
                 // Return the result of the account update
                 return r;
             } else if self.accounts.try_insert(*key, default()).is_none() {
-                // Return None if the account insertion fails
+                // Return None if the account insertion succeeds
                 return None;
             }
         }

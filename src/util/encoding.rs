@@ -2,7 +2,8 @@
 use crate::util::Error;
 use crate::{bail, error};
 use bitvec::prelude::*;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt::{Display, UpperHex};
 use std::str::FromStr;
 
 pub fn to_hex(bytes: &[u8]) -> String {
@@ -35,6 +36,14 @@ pub fn hex_formatter_lower(f: &mut std::fmt::Formatter<'_>, bytes: &[u8]) -> std
     Ok(())
 }
 
+pub fn serialize_to_display<T: Display, S>(v: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let s = format!("{}", v);
+    serializer.serialize_str(s.as_str())
+}
+
 pub fn deserialize_from_str<'de, T, D>(
     deserializer: D,
 ) -> Result<T, <D as Deserializer<'de>>::Error>
@@ -46,6 +55,45 @@ where
     let s: &str = Deserialize::deserialize(deserializer)?;
     Ok(T::from_str(s).map_err(serde::de::Error::custom)?)
 }
+
+
+pub fn serialize_list_to_display<T, S>(values: &[T], serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: Display,
+    S: Serializer,
+{
+    let strings: Vec<String> = values.iter().map(|value| value.to_string()).collect();
+    strings.serialize(serializer)
+}
+
+pub fn deserialize_list_from_str<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: FromStr,
+    T::Err: Display,
+    D: Deserializer<'de>,
+{
+    let strings: Vec<String> = Vec::deserialize(deserializer)?;
+    let values = strings
+        .into_iter()
+        .map(|s| s.parse().map_err(serde::de::Error::custom))
+        .collect::<Result<Vec<T>, _>>()?;
+    Ok(values)
+}
+
+pub fn deserialize_list_from_string<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: FromStr,
+    T::Err: Display,
+    D: Deserializer<'de>,
+{
+    let strings: Vec<String> = Deserialize::deserialize(deserializer)?;
+    let values = strings
+        .into_iter()
+        .map(|s| s.parse().map_err(serde::de::Error::custom))
+        .collect::<Result<Vec<T>, _>>()?;
+    Ok(values)
+}
+
 
 pub fn deserialize_from_string<'de, T, D>(
     deserializer: D,
@@ -95,7 +143,7 @@ fn decode_slt_base_32(s: &str) -> Result<BitVec<u8, Msb0>, Error> {
 /// This macro relies on the `struct` to be a newtype containing a slice of `[u8; $struct::LEN]`.
 ///
 /// It adds:
-/// * serde implementations to (de)serialize hex strings.
+/// * `to_hex`, `from_hex` to (de)serialize hex strings.
 /// * `pub fn as_bytes(&self) -> &[u8]`
 /// * `pub fn as_hex(&self) -> String`
 /// * `TryFrom<&[u8]>` implementation.
@@ -172,31 +220,6 @@ macro_rules! hexify {
         impl ::std::fmt::LowerHex for $struct {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 write!(f, "{}", self.as_hex_lower())
-            }
-        }
-
-        impl serde::Serialize for $struct {
-            fn serialize<S>(
-                &self,
-                serializer: S,
-            ) -> ::std::result::Result<<S as serde::Serializer>::Ok, <S as serde::Serializer>::Error>
-            where
-                S: serde::Serializer,
-            {
-                serializer.serialize_str(self.as_hex().as_str())
-            }
-        }
-
-        impl<'de> serde::Deserialize<'de> for $struct {
-            fn deserialize<D>(
-                deserializer: D,
-            ) -> ::std::result::Result<Self, <D as serde::Deserializer<'de>>::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                use ::std::str::FromStr;
-                let s: String = serde::Deserialize::deserialize(deserializer)?;
-                Ok(Self::from_str(&s).map_err(serde::de::Error::custom)?)
             }
         }
     };

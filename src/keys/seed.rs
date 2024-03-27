@@ -3,11 +3,12 @@ use super::Hash;
 use crate::hexify;
 use crate::keys::private::Private;
 use rand::RngCore;
+use serde::{Deserialize, Serialize};
 
 /// 256 bit seed used to derive multiple addresses.
 ///
 /// See https://docs.nano.org/integration-guides/the-basics/#seed for details.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Seed(pub [u8; 32]);
 
 hexify!(Seed, "seed");

@@ -1,6 +1,4 @@
-use std::net::SocketAddr;
-
-use crate::network::Logical;
+use crate::network::Endpoint;
 use crate::rpc::{on_account_balance, on_work_generate};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
@@ -24,12 +22,12 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody {
 }
 
 pub struct Rpc {
-    logical: Logical,
+    ep: Endpoint,
 }
 
 impl Rpc {
-    pub fn new(logical: Logical) -> Self {
-        Self { logical }
+    pub fn new(ep: Endpoint) -> Self {
+        Self { ep }
     }
 }
 
@@ -75,8 +73,7 @@ impl Rpc {
     }
 
     pub async fn run(self) -> Result<()> {
-        let listener = TcpListener::bind(self.logical.to_socket_addr()).await?;
-        println!("Listening on http://{}", self.logical);
+        let listener = TcpListener::bind(self.ep.to_socket_addr()).await?;
         loop {
             let (stream, _) = listener.accept().await?;
             let io = TokioIo::new(stream);

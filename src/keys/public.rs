@@ -9,10 +9,11 @@ use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
 use primitive_types::U512;
+use serde::Serialize;
 use serde::{Deserialize, Deserializer, Serializer};
 
 /// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(align(8))]
 pub struct Public([u8; 32]);
 

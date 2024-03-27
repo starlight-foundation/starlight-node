@@ -18,7 +18,7 @@ static STATE: State = {
     params.to_state()
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, std::hash::Hash)]
 #[repr(align(8))]
 pub struct Hash([u8; 32]);
 
