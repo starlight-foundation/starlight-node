@@ -2,12 +2,13 @@ use std::time::{Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
+use super::Epoch;
+
 const GENESIS_TIME_MS: u64 = 1710290840 * 1000;
 const SLOT_TIME_MS: u64 = 500;
-const EPOCH_SLOT_LENGTH: u64 = 86400;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
-pub struct Slot(u64);
+pub struct Slot(pub(super) u64);
 impl Slot {
     pub fn zero() -> Slot {
         Slot(0)
@@ -25,14 +26,17 @@ impl Slot {
     pub fn saturating_sub(self, other: Slot) -> u64 {
         self.0.saturating_sub(other.0)
     }
-    pub fn to_bytes(self) -> [u8; 8] {
+    pub const fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }
-    pub fn from_bytes(self, bytes: [u8; 8]) -> Self {
+    pub const fn from_bytes(bytes: [u8; 8]) -> Self {
         Self(u64::from_le_bytes(bytes))
     }
     pub fn max() -> Self {
         Self(u64::MAX)
+    }
+    pub fn epoch(self) -> Epoch {
+        Epoch(self.0 / Epoch::LEN as u64)
     }
 }
 

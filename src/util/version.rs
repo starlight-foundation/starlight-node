@@ -58,10 +58,20 @@ impl FromStr for Version {
             return Err(format!("Invalid version string: {}", s));
         }
 
-        let major = parts[0].parse().map_err(|_| format!("Invalid major version: {}", parts[0]))?;
-        let minor = parts[1].parse().map_err(|_| format!("Invalid minor version: {}", parts[1]))?;
-        let patch = parts[2].parse().map_err(|_| format!("Invalid patch version: {}", parts[2]))?;
+        let major = parts[0]
+            .parse()
+            .map_err(|_| format!("Invalid major version: {}", parts[0]))?;
+        let minor = parts[1]
+            .parse()
+            .map_err(|_| format!("Invalid minor version: {}", parts[1]))?;
+        let patch = parts[2]
+            .parse()
+            .map_err(|_| format!("Invalid patch version: {}", parts[2]))?;
 
-        Ok(Version { major, minor, patch })
+        Ok(Version {
+            major,
+            minor,
+            patch,
+        })
     }
 }

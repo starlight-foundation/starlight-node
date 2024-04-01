@@ -14,7 +14,7 @@ pub struct Private(pub(super) [u8; 32]);
 hexify!(Private, "private key");
 
 impl Private {
-    pub const LEN: usize = 32;
+    const LEN: usize = 32;
 
     /// The zero private key
     pub(super) const fn zero() -> Self {

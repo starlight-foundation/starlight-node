@@ -1,6 +1,6 @@
 use crate::{
-    protocol::{Amount, Slot},
     keys::Public,
+    protocol::{Amount, Slot},
 };
 
 use super::Batch;

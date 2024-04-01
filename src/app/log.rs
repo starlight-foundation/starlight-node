@@ -1,9 +1,7 @@
 use chrono::Utc;
 
 pub fn manual(level: &str, message: &str) {
-    let timestamp = Utc::now().format(
-        "%Y-%m-%dT%H:%M:%S%.3fZ"
-    );
+    let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
     println!("{} {} {}", timestamp, level, message);
 }
 

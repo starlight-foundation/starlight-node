@@ -1,21 +1,21 @@
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
 mod difficulty;
 mod hash;
+mod identity;
 mod private;
 mod public;
 mod seed;
 mod signature;
 mod work;
-mod identity;
 
 pub use difficulty::Difficulty;
 pub use hash::{Hash, HashBuilder};
+pub use identity::Identity;
 pub use private::Private;
 pub use public::Public;
 pub use seed::Seed;
 pub use signature::Signature;
 pub use work::Work;
-pub use identity::Identity;
 
 #[cfg(test)]
 mod tests {

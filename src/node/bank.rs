@@ -1,6 +1,6 @@
 use super::{Account, Batch, BatchFactory, Block};
-use crate::protocol::{Amount, Tx, TxKind};
 use crate::keys::Public;
+use crate::protocol::{Amount, Epoch, Transaction, TransactionKind};
 use leapfrog::LeapMap;
 
 pub struct Bank {
@@ -12,7 +12,7 @@ pub struct Bank {
 
 impl Bank {
     pub fn new(genesis: Public) -> Self {
-        let mut accounts = LeapMap::new();
+        let accounts = LeapMap::new();
         accounts.insert(genesis, Account::genesis(genesis));
         Self {
             accounts,
@@ -68,9 +68,9 @@ impl Bank {
     }
 
     // Queue the send half of a transaction
-    fn queue_send(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
+    fn queue_send(&self, tx: &Transaction, batch: Batch) -> Result<(), ()> {
         match tx.kind {
-            TxKind::Normal => self.update_account(&tx.from, |a| {
+            TransactionKind::Normal => self.update_account(&tx.from, |a| {
                 // Return an error if the nonce, balance, or batch doesn't match
                 if a.nonce != tx.nonce || a.latest_balance < tx.amount || a.batch == batch {
                     return Err(());
@@ -83,7 +83,7 @@ impl Bank {
                 a.batch = batch;
                 Ok(())
             }),
-            TxKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
+            TransactionKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
                 // Return an error if the nonce or batch doesn't match
                 if a.nonce != tx.nonce || a.batch == batch {
                     return Err(());
@@ -96,7 +96,7 @@ impl Bank {
     }
 
     // Execute the send half of a transaction
-    fn execute_send(&self, tx: &Tx) {
+    fn execute_send(&self, tx: &Transaction) {
         self.update_account(&tx.from, |a| {
             a.nonce += 1;
             a.latest_balance -= tx.amount;
@@ -106,9 +106,9 @@ impl Bank {
     }
 
     // Process the send half of a transaction
-    fn process_send(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
+    fn process_send(&self, tx: &Transaction, batch: Batch) -> Result<(), ()> {
         match tx.kind {
-            TxKind::Normal => self.update_account(&tx.from, |a| {
+            TransactionKind::Normal => self.update_account(&tx.from, |a| {
                 // Return an error if the nonce, balance, or batch doesn't match
                 if a.nonce != tx.nonce || a.latest_balance < tx.amount || a.batch == batch {
                     return Err(());
@@ -126,7 +126,7 @@ impl Bank {
                 a.batch = batch;
                 Ok(())
             }),
-            TxKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
+            TransactionKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
                 // Return an error if the nonce or batch doesn't match
                 if a.nonce != tx.nonce || a.batch == batch {
                     return Err(());
@@ -141,9 +141,9 @@ impl Bank {
     }
 
     // Process the receive half of the transaction
-    fn process_recv(&self, tx: &Tx) {
+    fn process_recv(&self, tx: &Transaction) {
         // Skip processing for change representative transactions
-        if tx.kind == TxKind::ChangeRepresentative {
+        if tx.kind == TransactionKind::ChangeRepresentative {
             return;
         }
         self.insert_or_update_account(
@@ -158,8 +158,8 @@ impl Bank {
     }
 
     // Revert a transaction
-    fn revert_transaction(&self, tx: &Tx) {
-        if tx.kind == TxKind::ChangeRepresentative {
+    fn revert_transaction(&self, tx: &Transaction) {
+        if tx.kind == TransactionKind::ChangeRepresentative {
             self.update_account(&tx.from, |a| {
                 // Decrement the account nonce
                 a.nonce -= 1;
@@ -191,9 +191,9 @@ impl Bank {
     }
 
     // Finalize a transaction
-    fn finalize_transaction(&self, tx: &Tx) {
+    fn finalize_transaction(&self, tx: &Transaction) {
         match tx.kind {
-            TxKind::Normal => {
+            TransactionKind::Normal => {
                 let from_rep = self
                     .update_account(&tx.from, |a| {
                         // Deduct the transaction amount from the sender's finalized balance
@@ -224,7 +224,7 @@ impl Bank {
                     },
                 );
             }
-            TxKind::ChangeRepresentative => {
+            TransactionKind::ChangeRepresentative => {
                 let (prev_rep, finalized_balance) = self
                     .update_account(&tx.from, |a| {
                         let prev_rep = a.rep;
@@ -252,7 +252,7 @@ impl Bank {
     }
 
     // Process a transaction
-    pub fn process_transaction(&self, tx: &Tx, batch: Batch) -> Result<(), ()> {
+    pub fn process_transaction(&self, tx: &Transaction, batch: Batch) -> Result<(), ()> {
         // Process the send half of the transaction
         self.process_send(tx, batch)?;
         // Process the receive half of the transaction
@@ -280,21 +280,19 @@ impl Bank {
     }
 
     // Revert a block of transactions
-    pub fn revert_block(&self, block: &Block) -> Result<(), ()> {
+    pub fn revert_block(&self, block: &Block) {
         for tx in block.transactions.iter() {
             // Revert each transaction in the block
             self.revert_transaction(tx);
         }
-        Ok(())
     }
 
     // Finalize a block of transactions
-    pub fn finalize_block(&self, block: &Block) -> Result<(), ()> {
+    pub fn finalize_block(&self, block: &Block) {
         for tx in block.transactions.iter() {
             // Finalize each transaction in the block
             self.finalize_transaction(tx);
         }
-        Ok(())
     }
 
     // Get the latest balance, finalized balance, and nonce for an account

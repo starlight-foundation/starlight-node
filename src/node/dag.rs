@@ -1,10 +1,13 @@
+use petgraph::algo::astar;
 use petgraph::{
     graphmap::GraphMap,
     visit::{Dfs, Visitable, Walker},
     Directed, Incoming,
 };
 use std::{
-    cmp::Ordering, collections::{HashMap, HashSet}, hash::Hash
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    hash::Hash,
 };
 
 use crate::{error, util::Error};
@@ -23,9 +26,11 @@ pub struct Dag<K: Hash + Copy + Ord, V> {
     /// All heads (nodes without children)
     heads: HashSet<K>,
     /// The head of the tallest chain of nodes
-    longest_chain: Option<K>,
+    longest_chain: K,
     /// Node values
-    nodes: HashMap<K, Node<V>>
+    nodes: HashMap<K, Node<V>>,
+    /// The root node from which all others follow
+    root: K,
 }
 
 fn is_a_taller_than_b<K: Ord>(a: (u64, &K), b: (u64, &K)) -> bool {
@@ -38,58 +43,74 @@ fn is_a_taller_than_b<K: Ord>(a: (u64, &K), b: (u64, &K)) -> bool {
 
 impl<K: Hash + Copy + Ord, V> Dag<K, V> {
     /// Creates a new Dag.
-    pub fn new() -> Self {
+    pub fn new(root_k: K, root_v: V) -> Self {
+        let mut graph = GraphMap::new();
+        graph.add_node(root_k);
+        let mut heads = HashSet::new();
+        heads.insert(root_k);
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            root_k,
+            Node {
+                height: 0,
+                value: root_v,
+            },
+        );
         Self {
-            graph: GraphMap::new(),
-            heads: HashSet::new(),
-            longest_chain: None,
-            nodes: HashMap::new(),
+            graph,
+            heads,
+            longest_chain: root_k,
+            nodes,
+            root: root_k,
         }
     }
 
     /// Get the head of the longest chain of nodes
-    pub fn get_longest_chain(&self) -> Option<&V> {
-        self.longest_chain.as_ref().map(|idx| &self.nodes[&idx].value)
+    pub fn get_longest_chain(&self) -> (&K, &V) {
+        (&self.longest_chain, &self.nodes[&self.longest_chain].value)
     }
 
-    /// Insert a node into the DAG, returning `true` if it did not already exist.
-    /// If `prev` exists, it must reference a valid node in the DAG.
+    /// Insert a node into the DAG. If it already exists, an error is returned.
+    /// `prev` must reference a valid node in the DAG.
     /// Updates `self.longest_chain` if necessary.
-    pub fn insert(&mut self, key: K, value: V, prev: Option<K>) -> Result<bool, Error> {
+    pub fn insert(&mut self, key: K, value: V, prev: K) -> Result<(), Error> {
         if self.nodes.contains_key(&key) {
-            return Ok(false);
+            return Err(error!("node already exists in DAG"));
         }
 
         self.graph.add_node(key.clone());
-        let height = if let Some(prev_key) = prev {
-            let prev_height = self.nodes.get(&prev_key).ok_or_else(|| error!("can't find prev node in DAG"))?.height;
-            self.graph.add_edge(prev_key.clone(), key.clone(), ());
-            self.heads.remove(&prev_key);
+        let height = {
+            let prev_height = self
+                .nodes
+                .get(&prev)
+                .ok_or_else(|| error!("can't find prev node in DAG"))?
+                .height;
+            self.graph.add_edge(prev, key, ());
+            self.heads.remove(&prev);
             prev_height + 1
-        } else {
-            0
         };
-
 
         self.nodes.insert(key.clone(), Node { height, value });
         self.heads.insert(key.clone());
 
-        if self.longest_chain.is_none() || is_a_taller_than_b(
+        if is_a_taller_than_b(
             (height, &key),
-            self.longest_chain.as_ref().map(|key| {
-                (self.nodes.get(key).unwrap().height, key)
-            }).unwrap(),
+            (self.nodes[&self.longest_chain].height, &self.longest_chain),
         ) {
-            self.longest_chain = Some(key.clone());
+            self.longest_chain = key;
         }
 
-        Ok(true)
+        Ok(())
     }
 
     /// Removes a node from the DAG.
+    /// The node cannot be the root.
     pub fn remove(&mut self, key: K) -> Result<(), Error> {
         if !self.graph.contains_node(key.clone()) {
             return Err(error!("can't find node in DAG"));
+        }
+        if self.root == key {
+            return Err(error!("can't remove root node"));
         }
         self.graph.remove_node(key.clone());
         self.nodes.remove(&key);
@@ -103,28 +124,31 @@ impl<K: Hash + Copy + Ord, V> Dag<K, V> {
     pub fn iter_node_and_ancestors(&self, key: K) -> Option<impl Iterator<Item = &V>> {
         match self.graph.contains_node(key) {
             false => None,
-            true => Some(std::iter::successors(Some(key), |&x| {
-                self.graph.neighbors_directed(x, Incoming).next()
-            }).filter_map(move |k| self.nodes.get(&k).map(|n| &n.value))),
+            true => Some(
+                std::iter::successors(Some(key), |&x| {
+                    self.graph.neighbors_directed(x, Incoming).next()
+                })
+                .filter_map(move |k| self.nodes.get(&k).map(|n| &n.value)),
+            ),
         }
     }
 
     /// Iterate over the node denoted by `key`, and all its descendants.
     /// Starts at `key` and works forwards.
     /// Returns `None` if the node denoted by `key` does not exist.
-    pub fn iter_node_and_descendants(&self, key: K) -> Option<impl Iterator<Item = &V>> {
+    pub fn iter_node_and_descendants(&self, key: K) -> Option<impl Iterator<Item = (&K, &V)>> {
         if !self.graph.contains_node(key.clone()) {
             return None;
         }
         let descendants = Dfs::new(&self.graph, key.clone())
             .iter(&self.graph)
-            .filter_map(move |k| self.nodes.get(&k).map(|n| &n.value));
+            .filter_map(move |k| self.nodes.get_key_value(&k).map(|(k, v)| (k, &v.value)));
         Some(descendants)
     }
 
-    /// Get the common ancestor of the two nodes denoted by `key1` and `key2`, or None if one does not exist.
+    /// Get the common ancestor of the two nodes denoted by `key1` and `key2`.
     /// Returns `None` if either node denoted by `key1` or `key2` does not exist.
-    pub fn get_common_ancestor(&self, mut k1: K, mut k2: K) -> Option<&V> {
+    pub fn get_common_ancestor(&self, mut k1: K, mut k2: K) -> Option<(&K, &V)> {
         while k1 != k2 {
             if self.nodes.get(&k1)?.height > self.nodes.get(&k2)?.height {
                 k1 = self.graph.neighbors_directed(k1, Incoming).next()?;
@@ -133,7 +157,29 @@ impl<K: Hash + Copy + Ord, V> Dag<K, V> {
             }
         }
 
-        Some(&self.nodes.get(&k1)?.value)
+        self.nodes.get_key_value(&k1).map(|(k, v)| (k, &v.value))
+    }
+
+    /// Get the value of the node denoted by `k`.
+    pub fn get(&self, k: &K) -> Option<&V> {
+        self.nodes.get(k).map(|n| &n.value)
+    }
+
+    /// Get a path of keys starting with `from` and ending with `to`, or `None` if one does not exist.
+    pub fn get_path(&self, from: K, to: K) -> Option<Vec<K>> {
+        astar(
+            &self.graph,
+            from,                  // start
+            |finish| finish == to, // goal
+            |_| 1,                 // edge cost
+            |_| 0,                 // heuristic
+        )
+        .map(|(_, path)| path)
+    }
+
+    /// Get the root node
+    pub fn get_root(&self) -> (&K, &V) {
+        (&self.root, &self.nodes[&self.root].value)
     }
 
     /// If the node denoted by `key` exists in the DAG, set the corresponding node as the "root" node.
@@ -146,15 +192,20 @@ impl<K: Hash + Copy + Ord, V> Dag<K, V> {
         let descendants: HashSet<K> = Dfs::new(&self.graph, key.clone())
             .iter(&self.graph)
             .collect();
-        let to_remove: Vec<K> = self.graph.nodes().filter(|x| !descendants.contains(x)).collect();
+        let to_remove: Vec<K> = self
+            .graph
+            .nodes()
+            .filter(|x| !descendants.contains(x))
+            .collect();
         for node in to_remove {
             self.graph.remove_node(node);
         }
         self.nodes.retain(|k, _| descendants.contains(k));
         self.heads.retain(|k| descendants.contains(k));
 
-        if self.longest_chain.as_ref().map(|k| descendants.contains(k)) == Some(false) {
-            self.longest_chain = self.heads
+        if !descendants.contains(&self.longest_chain) {
+            self.longest_chain = self
+                .heads
                 .iter()
                 .max_by(|key1, key2| {
                     match is_a_taller_than_b(
@@ -162,12 +213,14 @@ impl<K: Hash + Copy + Ord, V> Dag<K, V> {
                         (self.nodes.get(key2).unwrap().height, key2),
                     ) {
                         true => Ordering::Greater,
-                        false => Ordering::Less
+                        false => Ordering::Less,
                     }
                 })
-                .map(|k| k.clone());
+                .map(|k| k.clone())
+                .unwrap();
         }
 
+        self.root = key;
         Ok(())
     }
 }
@@ -178,77 +231,49 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let dag: Dag<char, i32> = Dag::new();
-        assert_eq!(dag.nodes.len(), 0);
-        assert_eq!(dag.heads.len(), 0);
-        assert_eq!(dag.get_longest_chain(), None);
+        let dag: Dag<char, i32> = Dag::new('A', 1);
+        assert_eq!(dag.nodes.len(), 1);
+        assert_eq!(dag.heads.len(), 1);
+        assert_eq!(dag.get_longest_chain(), (&'A', &1));
     }
 
     #[test]
     fn test_insert() {
-        let mut dag = Dag::new();
-
-        // Insert a node without a parent
-        assert_eq!(dag.insert('A', 1, None), Ok(true));
-        assert_eq!(dag.nodes.len(), 1);
-        assert_eq!(dag.heads.len(), 1);
-        assert_eq!(dag.get_longest_chain(), Some(&1));
+        let mut dag = Dag::new('A', 1);
 
         // Insert a node with a parent
-        assert_eq!(
-            dag.insert('B', 2, Some('A')),
-            Ok(true)
-        );
+        assert!(dag.insert('B', 2, 'A').is_ok());
         assert_eq!(dag.nodes.len(), 2);
         assert_eq!(dag.heads.len(), 1);
-        assert_eq!(dag.get_longest_chain(), Some(&2));
+        assert_eq!(dag.get_longest_chain(), (&'B', &2));
 
         // Insert a node with a non-existent parent
-        assert!(dag
-            .insert('C', 3, Some('D'))
-            .is_err());
+        assert!(dag.insert('C', 3, 'D').is_err());
 
-        // Insert a node that already exists
-        assert_eq!(dag.insert('A', 4, None), Ok(false));
+        // Attempt to insert a node that already exists
+        assert!(dag.insert('A', 4, 'B').is_err());
     }
 
     #[test]
     fn test_get_longest_chain() {
-        let mut dag = Dag::new();
+        let mut dag = Dag::new('A', 1);
 
-        assert!(dag.insert('A', 1, None).is_ok());
-        assert!(dag
-            .insert('B', 2, Some('A'))
-            .is_ok());
-        assert!(dag
-            .insert('C', 3, Some('B'))
-            .is_ok());
-        assert!(dag
-            .insert('D', 4, Some('A'))
-            .is_ok());
+        assert!(dag.insert('B', 2, 'A').is_ok());
+        assert!(dag.insert('C', 3, 'B').is_ok());
+        assert!(dag.insert('D', 4, 'A').is_ok());
 
-        assert_eq!(dag.get_longest_chain(), Some(&3));
+        assert_eq!(dag.get_longest_chain(), (&'C', &3));
     }
 
     #[test]
     fn test_iter_node_and_ancestors() {
-        let mut dag = Dag::new();
+        let mut dag = Dag::new('A', 1);
 
-        assert!(dag.insert('A', 1, None).is_ok());
-        assert!(dag
-            .insert('B', 2, Some('A'))
-            .is_ok());
-        assert!(dag
-            .insert('C', 3, Some('B'))
-            .is_ok());
-        assert!(dag
-            .insert('D', 4, Some('A'))
-            .is_ok());
+        assert!(dag.insert('B', 2, 'A').is_ok());
+        assert!(dag.insert('C', 3, 'B').is_ok());
+        assert!(dag.insert('D', 4, 'A').is_ok());
 
-        let ancestors: Vec<&i32> = dag
-            .iter_node_and_ancestors('C')
-            .unwrap()
-            .collect();
+        let ancestors: Vec<&i32> = dag.iter_node_and_ancestors('C').unwrap().collect();
         assert_eq!(ancestors, vec![&3, &2, &1]);
 
         assert!(dag.iter_node_and_ancestors('E').is_none());
@@ -256,88 +281,51 @@ mod tests {
 
     #[test]
     fn test_iter_node_and_descendants() {
-        let mut dag = Dag::new();
+        let mut dag = Dag::new('A', 1);
 
-        assert!(dag.insert('A', 1, None).is_ok());
-        assert!(dag
-            .insert('B', 2, Some('A'))
-            .is_ok());
-        assert!(dag
-            .insert('C', 3, Some('B'))
-            .is_ok());
-        assert!(dag
-            .insert('D', 4, Some('A'))
-            .is_ok());
+        assert!(dag.insert('B', 2, 'A').is_ok());
+        assert!(dag.insert('C', 3, 'B').is_ok());
+        assert!(dag.insert('D', 4, 'A').is_ok());
 
-        let descendants: Vec<&i32> = dag
+        let descendants: Vec<i32> = dag
             .iter_node_and_descendants('A')
             .unwrap()
+            .map(|(_, &x)| x)
             .collect();
-        assert_eq!(descendants, vec![&1, &4, &2, &3]);
+        assert_eq!(descendants, vec![1, 4, 2, 3]);
 
         assert!(dag.iter_node_and_descendants('E').is_none());
     }
 
     #[test]
     fn test_get_common_ancestor() {
-        let mut dag = Dag::new();
+        let mut dag = Dag::new('A', 1);
 
-        assert!(dag.insert('A', 1, None).is_ok());
-        assert!(dag
-            .insert('B', 2, Some('A'))
-            .is_ok());
-        assert!(dag
-            .insert('C', 3, Some('B'))
-            .is_ok());
-        assert!(dag
-            .insert('D', 4, Some('A'))
-            .is_ok());
+        assert!(dag.insert('B', 2, 'A').is_ok());
+        assert!(dag.insert('C', 3, 'B').is_ok());
+        assert!(dag.insert('D', 4, 'A').is_ok());
 
-        assert_eq!(
-            dag.get_common_ancestor('B', 'D'),
-            Some(&1)
-        );
-        assert_eq!(
-            dag.get_common_ancestor('C', 'D'),
-            Some(&1)
-        );
-        assert_eq!(
-            dag.get_common_ancestor('A', 'C'),
-            Some(&1)
-        );
-        assert_eq!(
-            dag.get_common_ancestor('A', 'A'),
-            Some(&1)
-        );
+        assert_eq!(dag.get_common_ancestor('B', 'D'), Some((&'A', &1)));
+        assert_eq!(dag.get_common_ancestor('C', 'D'), Some((&'A', &1)));
+        assert_eq!(dag.get_common_ancestor('A', 'C'), Some((&'A', &1)));
+        assert_eq!(dag.get_common_ancestor('A', 'A'), Some((&'A', &1)));
 
-        assert!(dag
-            .get_common_ancestor('A', 'E')
-            .is_none());
-        assert!(dag
-            .get_common_ancestor('E', 'A')
-            .is_none());
+        assert!(dag.get_common_ancestor('A', 'E').is_none());
+        assert!(dag.get_common_ancestor('E', 'A').is_none());
     }
 
     #[test]
     fn test_set_root() {
-        let mut dag = Dag::new();
+        let mut dag = Dag::new('A', 1);
 
-        assert!(dag.insert('A', 1, None).is_ok());
-        assert!(dag
-            .insert('B', 2, Some('A'))
-            .is_ok());
-        assert!(dag
-            .insert('C', 3, Some('B'))
-            .is_ok());
-        assert!(dag
-            .insert('D', 4, Some('A'))
-            .is_ok());
+        assert!(dag.insert('B', 2, 'A').is_ok());
+        assert!(dag.insert('C', 3, 'B').is_ok());
+        assert!(dag.insert('D', 4, 'A').is_ok());
 
         assert!(dag.set_root('B').is_ok());
         assert_eq!(dag.nodes.len(), 2);
         assert_eq!(dag.heads.len(), 1);
-        assert_eq!(dag.get_longest_chain(), Some(&3));
-
+        assert_eq!(dag.get_longest_chain(), (&'C', &3));
         assert!(dag.set_root('E').is_err());
     }
 }

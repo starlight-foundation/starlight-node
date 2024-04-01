@@ -2,14 +2,22 @@ mod config;
 #[macro_use]
 mod log;
 
-use std::{fs::{self, File}, io::Write, str::FromStr};
-use crate::{keys::{Identity, Private, Seed}, util::{Error, Version}};
 use crate::network::{Endpoint, Network};
 use crate::protocol::Amount;
 use crate::rpc::Rpc;
-use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use crate::{
+    keys::{Identity, Private, Seed},
+    util::{Error, Version},
+};
 use config::Config;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::{
+    fs::{self, File},
+    io::Write,
+    str::FromStr,
+};
+use tokio::sync::mpsc;
 
 const VERSION: Version = Version::new(0, 1, 0);
 const CONFIG_FILE: &str = "config.toml";
@@ -55,25 +63,31 @@ pub async fn start() {
     log_info!("RPC listening on http://{}", config.rpc_endpoint);
     let id = Identity { private, public };
     let (shred_msg_tx, shred_msg_rx) = mpsc::unbounded_channel();
+    let (transaction_tx, _) = mpsc::unbounded_channel();
     let network = Network::new(
         config.node_bind_endpoint,
         config.node_external_endpoint,
         id,
-        config.initial_peers,
+        Arc::new(config.initial_peers),
         config.max_less_peers,
         config.max_greater_peers,
         Box::new(|_| Amount::from_raw(1)),
+        transaction_tx,
         shred_msg_tx,
         shred_msg_rx,
         VERSION,
         config.allow_peers_with_private_ip_addresses,
         config.allow_peers_with_node_external_ip_address,
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
     log_info!("SLP listening on udp://{}", config.node_bind_endpoint);
-    log_info!("SLP external endpoint is udp://{}", config.node_external_endpoint);
+    log_info!(
+        "SLP external endpoint is udp://{}",
+        config.node_external_endpoint
+    );
     if config.node_external_endpoint.addr == [127, 0, 0, 1] {
         log_warn!("SLP external endpoint is localhost; this node will not be able to communicate over the Internet");
     }
     network.run().await.unwrap();
 }
-

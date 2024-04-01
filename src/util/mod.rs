@@ -6,18 +6,19 @@ use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub use encoding::{
-    serialize_list_to_display,
-    deserialize_list_from_str,
-    deserialize_list_from_string,
-    deserialize_from_string,
-    serialize_to_display,
-    deserialize_from_str,
-    expect_len,
-    to_hex,
-    to_hex_lower
+    deserialize_from_str, deserialize_from_string, deserialize_list_from_str,
+    deserialize_list_from_string, expect_len, serialize_list_to_display, serialize_to_display,
+    to_hex, to_hex_lower,
 };
 pub use error::Error;
 pub use version::Version;
+
+#[macro_export]
+macro_rules! static_assert {
+    ($($tt:tt)*) => {
+        const _: () = assert!($($tt)*);
+    }
+}
 
 pub fn serialize_into<T: Serialize>(buf: &mut Vec<u8>, value: &T) {
     bincode::serialize_into(buf, value).unwrap()

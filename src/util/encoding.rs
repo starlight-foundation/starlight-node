@@ -56,7 +56,6 @@ where
     Ok(T::from_str(s).map_err(serde::de::Error::custom)?)
 }
 
-
 pub fn serialize_list_to_display<T, S>(values: &[T], serializer: S) -> Result<S::Ok, S::Error>
 where
     T: Display,
@@ -93,7 +92,6 @@ where
         .collect::<Result<Vec<T>, _>>()?;
     Ok(values)
 }
-
 
 pub fn deserialize_from_string<'de, T, D>(
     deserializer: D,
@@ -177,9 +175,8 @@ macro_rules! hexify {
                 use ::std::convert::TryFrom;
 
                 crate::util::expect_len(s.len(), Self::LEN * 2, $description)?;
-                let vec = hex::decode(s.as_bytes()).map_err(|e| crate::error!(
-                    "can't parse hex: {} {}", $description, e
-                ))?;
+                let vec = hex::decode(s.as_bytes())
+                    .map_err(|e| crate::error!("can't parse hex: {} {}", $description, e))?;
                 let bytes = vec.as_slice();
                 let x = <[u8; Self::LEN]>::try_from(bytes)?;
                 Ok(Self(x))

@@ -27,3 +27,4 @@ static_init = "1.0.3"
 petgraph = { version = "0.6.4", features = ["graphmap"], default-features = false }
 toml = "0.8.12"
 chrono = "0.4.35"
+rand_chacha = "0.3.1"

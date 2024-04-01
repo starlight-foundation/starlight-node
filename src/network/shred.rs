@@ -183,9 +183,7 @@ impl Shred {
                     batch_index: batch_index as u32,
                     shred_index: (i - start_index) as u32,
                     // safety: not read by RSE
-                    data: unsafe {
-                        Vec::uninit(chunk_len as usize)
-                    }
+                    data: unsafe { Vec::uninit(chunk_len as usize) },
                 };
                 shreds.push(shred);
             }
@@ -251,9 +249,7 @@ impl ReconstructShard<Field> for BatchItem {
     > {
         if self.0.is_empty() {
             // safety: not read by RSE
-            self.0 = unsafe {
-                Vec::uninit(len)
-            };
+            self.0 = unsafe { Vec::uninit(len) };
             Err(Ok(&mut self.0))
         } else {
             Ok(&mut self.0)
@@ -422,9 +418,7 @@ impl ShredList {
             self.batches.extend((0..n_batches).map(|_| Batch::new()));
             self.claimed_data_size = claimed_data_size;
             // safety: immediately zeroed
-            self.ready = unsafe {
-                BitVec::uninit(n_batches)
-            };
+            self.ready = unsafe { BitVec::uninit(n_batches) };
             self.ready.as_raw_mut_slice().fill(0);
             self.initialized = true;
         }

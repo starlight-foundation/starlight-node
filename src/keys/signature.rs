@@ -25,7 +25,11 @@ impl<'de> Deserialize<'de> for Signature {
     {
         let bytes = <&[u8]>::deserialize(deserializer)?;
         if bytes.len() != 64 {
-            return Err(serde::de::Error::custom(format!("Expected {} bytes, got {}", Self::LEN, bytes.len())));
+            return Err(serde::de::Error::custom(format!(
+                "Expected {} bytes, got {}",
+                Self::LEN,
+                bytes.len()
+            )));
         }
         let mut arr = [0u8; 64];
         arr.copy_from_slice(bytes);
@@ -33,12 +37,10 @@ impl<'de> Deserialize<'de> for Signature {
     }
 }
 
-
-
 hexify!(Signature, "signature");
 
 impl Signature {
-    pub const LEN: usize = 64;
+    const LEN: usize = 64;
 
     pub fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)

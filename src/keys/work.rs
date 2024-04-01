@@ -6,10 +6,12 @@ use crate::hexify;
 use crate::util::Error;
 use blake2b_simd::Params;
 use rand::RngCore;
+use serde::Deserialize;
+use serde::Serialize;
 use std::convert::TryFrom;
 
 /// The result of some proof of work (PoW). Can verify and inefficiently generate PoW using the CPU.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(align(8))]
 pub struct Work(pub [u8; 8]);
 
@@ -23,7 +25,7 @@ static PARAMS: Params = {
 };
 
 impl Work {
-    pub const LEN: usize = 8;
+    const LEN: usize = 8;
 
     pub fn zero() -> Self {
         Self([0u8; Self::LEN])

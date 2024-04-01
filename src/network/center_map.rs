@@ -61,7 +61,7 @@ pub struct CenterMap<K: Hash + Eq + Clone + Ord, P: Ord, V: CenterMapValue<P>> {
     greater: DoublePriorityQueue<K, KeyPriorityIndex<K, P>>, // Set of key-value pairs greater than the center
     list: Vec<KeyValue<K, V>>,                               // List of all key-value pairs
     center: P,                                               // The center priority
-    max_less: usize, // Maximum number of elements less than the center
+    max_less: usize,    // Maximum number of elements less than the center
     max_greater: usize, // Maximum number of elements greater than the center
 }
 

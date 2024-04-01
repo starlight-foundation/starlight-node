@@ -8,7 +8,10 @@ use tokio::{
 };
 
 use crate::{
-    error, keys::{Identity, Private, Public, Signature}, protocol::{Amount, Slot}, util::{self, DefaultInitVec, Error, UninitVec, Version}
+    error,
+    keys::{Identity, Private, Public, Signature},
+    protocol::{Amount, Slot, Transaction},
+    util::{self, DefaultInitVec, Error, UninitVec, Version},
 };
 
 use super::{models::TelemetryMsg, CenterMap, Endpoint, Msg, Peer, Shred, ShredMsg};
@@ -35,13 +38,14 @@ pub struct Network {
     id: Identity,
     socket: Arc<UdpSocket>,
     peers: CenterMap<Public, Amount, Peer>,
-    initial_peers: Vec<Endpoint>,
+    initial_peers: Arc<Vec<Endpoint>>,
     get_weight: Box<dyn Fn(&Public) -> Amount>,
+    transaction_tx: UnboundedSender<Box<Transaction>>,
     shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
     shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
     version: Version,
     allow_peers_with_private_ip_addresses: bool,
-    allow_peers_with_node_external_ip_address: bool
+    allow_peers_with_node_external_ip_address: bool,
 }
 
 impl Network {
@@ -50,15 +54,16 @@ impl Network {
         bind_ep: Endpoint,
         visible_ep: Endpoint,
         id: Identity,
-        initial_peers: Vec<Endpoint>,
+        initial_peers: Arc<Vec<Endpoint>>,
         max_less: usize,
         max_greater: usize,
         get_weight: Box<dyn Fn(&Public) -> Amount>,
+        transaction_tx: UnboundedSender<Box<Transaction>>,
         shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
         shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
         version: Version,
         allow_peers_with_private_ip_addresses: bool,
-        allow_peers_with_node_external_ip_address: bool
+        allow_peers_with_node_external_ip_address: bool,
     ) -> Result<Self, Error> {
         Ok(Self {
             visible_ep,
@@ -67,11 +72,12 @@ impl Network {
             peers: CenterMap::new(get_weight(&id.public), max_less, max_greater),
             initial_peers,
             get_weight,
+            transaction_tx,
             shred_msg_tx,
             shred_msg_rx,
             version,
             allow_peers_with_private_ip_addresses,
-            allow_peers_with_node_external_ip_address
+            allow_peers_with_node_external_ip_address,
         })
     }
 
@@ -79,6 +85,7 @@ impl Network {
     fn broadcast_fanout(&mut self, msg: Arc<Vec<u8>>) {
         let mut peer_count = self.peers.len();
         let mut broadcast_left = fanout(peer_count);
+        let mut endpoints = Vec::with_capacity(broadcast_left);
         let mut rng = rand::thread_rng();
         let now = Slot::now();
         while broadcast_left > 0 && peer_count > 0 {
@@ -89,25 +96,26 @@ impl Network {
                 peer_count -= 1;
                 continue;
             }
-            let logical = peer.logical;
-            let socket = self.socket.clone();
-            let msg = msg.clone();
-            tokio::spawn(async move {
-                _ = socket.send_to(&msg, logical.to_socket_addr()).await;
-            });
+            endpoints.push(peer.endpoint);
             broadcast_left -= 1;
         }
+        let socket = self.socket.clone();
+        tokio::spawn(async move {
+            for endpoint in endpoints.iter() {
+                _ = socket.send_to(&msg, endpoint.to_socket_addr()).await;
+            }
+        });
     }
 
     // Broadcast a message to initial peers
     fn broadcast_initial_peers(&self, bytes: Arc<Vec<u8>>) {
-        for &logical in &self.initial_peers {
-            let socket = self.socket.clone();
-            let bytes = bytes.clone();
-            tokio::spawn(async move {
+        let socket = self.socket.clone();
+        let initial_peers = self.initial_peers.clone();
+        tokio::spawn(async move {
+            for logical in initial_peers.iter() {
                 _ = socket.send_to(&bytes, logical.to_socket_addr()).await;
-            });
-        }
+            }
+        });
     }
 
     // Handle incoming telemetry messages
@@ -125,7 +133,9 @@ impl Network {
             return;
         }
         // if we aren't allowed to communicate with our own IP
-        if !self.allow_peers_with_node_external_ip_address && tel_msg.ep.addr == self.visible_ep.addr {
+        if !self.allow_peers_with_node_external_ip_address
+            && tel_msg.ep.addr == self.visible_ep.addr
+        {
             return;
         }
 
@@ -135,7 +145,7 @@ impl Network {
                 // Update the peer's information if enough time has passed since the last update
                 if now.saturating_sub(peer.last_contact) >= PEER_UPDATE_INTERVAL {
                     peer.version = tel_msg.version;
-                    peer.logical = tel_msg.ep;
+                    peer.endpoint = tel_msg.ep;
                     peer.last_contact = now;
                     true
                 } else {
@@ -148,7 +158,7 @@ impl Network {
                     tel_msg.from,
                     Peer {
                         version: tel_msg.version,
-                        logical: tel_msg.ep,
+                        endpoint: tel_msg.ep,
                         weight: (self.get_weight)(&tel_msg.from),
                         last_contact: now,
                     },
@@ -165,9 +175,15 @@ impl Network {
     }
 
     // Handle incoming shred messages
-    fn on_shred_msg(&mut self, shred: Box<ShredMsg>) {
+    fn on_shred_msg(&self, shred: Box<ShredMsg>) {
         // Send the shred message to the shred message channel
         _ = self.shred_msg_tx.send(shred);
+    }
+
+    // Handle incoming transactions
+    fn on_transaction(&self, tr: Box<Transaction>) {
+        // Send the transaction to the transaction channel
+        _ = self.transaction_tx.send(tr);
     }
 
     // Handle incoming messages
@@ -175,6 +191,7 @@ impl Network {
         match msg {
             Msg::Tel(tel_msg) => self.on_tel_msg(tel_msg),
             Msg::Shred(shred_msg) => self.on_shred_msg(shred_msg),
+            Msg::Transaction(tr) => self.on_transaction(tr),
         }
     }
 
@@ -188,7 +205,7 @@ impl Network {
             self.id.private,
             Slot::now(),
             self.visible_ep,
-            self.version
+            self.version,
         ));
         let msg = Msg::Tel(tel_msg);
         let bytes = Arc::new(msg.serialize(MTU));
@@ -210,9 +227,7 @@ impl Network {
 
     // Run the network
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut interval = tokio::time::interval(Duration::from_secs(
-            PEER_UPDATE_INTERVAL
-        ));
+        let mut interval = tokio::time::interval(Duration::from_secs(PEER_UPDATE_INTERVAL));
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let socket = self.socket.clone();
 

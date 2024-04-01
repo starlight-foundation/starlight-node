@@ -13,7 +13,7 @@ use serde::Serialize;
 use serde::{Deserialize, Deserializer, Serializer};
 
 /// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[repr(align(8))]
 pub struct Public([u8; 32]);
 
@@ -138,7 +138,7 @@ static PARAMS: Params = {
 };
 
 impl Public {
-    pub const LEN: usize = 32;
+    const LEN: usize = 32;
     const ADDRESS_CHECKSUM_LEN: usize = 5;
 
     fn dalek_key(&self) -> Result<PublicKey, Error> {

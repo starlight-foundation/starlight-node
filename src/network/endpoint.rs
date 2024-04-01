@@ -16,12 +16,12 @@ impl Endpoint {
     pub fn is_external(&self) -> bool {
         let addr = Ipv4Addr::from(self.addr);
         !addr.is_private()
-        && !addr.is_loopback()
-        && !addr.is_multicast()
-        && !addr.is_unspecified()
-        && !addr.is_link_local()
-        && !addr.is_documentation()
-        && !addr.is_broadcast()
+            && !addr.is_loopback()
+            && !addr.is_multicast()
+            && !addr.is_unspecified()
+            && !addr.is_link_local()
+            && !addr.is_documentation()
+            && !addr.is_broadcast()
     }
     pub fn to_bytes(&self) -> [u8; 6] {
         let mut bytes = [0u8; 6];

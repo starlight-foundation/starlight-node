@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error, keys::{Hash, HashBuilder, Private, Public, Signature}, protocol::{Amount, Slot}, util::{self, Error, Version}
+    error,
+    keys::{Hash, HashBuilder, Private, Public, Signature},
+    protocol::{Amount, Slot, Transaction},
+    util::{self, Error, Version},
 };
 
 use super::{center_map::CenterMapValue, endpoint::Endpoint, shred::Shred};
@@ -10,7 +13,7 @@ use super::{center_map::CenterMapValue, endpoint::Endpoint, shred::Shred};
 pub struct Peer {
     pub weight: Amount,
     pub last_contact: Slot,
-    pub logical: Endpoint,
+    pub endpoint: Endpoint,
     pub version: Version,
 }
 impl CenterMapValue<Amount> for Peer {
@@ -81,6 +84,7 @@ const MAGIC_NUMBER: [u8; 8] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa, 0xe6];
 pub enum Msg {
     Tel(Box<TelemetryMsg>),
     Shred(Box<ShredMsg>),
+    Transaction(Box<Transaction>),
 }
 impl Msg {
     pub fn serialize(&self, mtu: usize) -> Vec<u8> {
@@ -107,6 +111,7 @@ impl Msg {
         match self {
             Msg::Tel(t) => t.verify(),
             Msg::Shred(s) => s.verify(),
+            Msg::Transaction(t) => t.verify_and_hash().map(|_| ()),
         }
     }
 }

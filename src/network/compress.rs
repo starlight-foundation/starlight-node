@@ -16,9 +16,7 @@ thread_local! {
 
 pub fn compress(bytes: &[u8]) -> Vec<u8> {
     // safety: output is not read before initialized
-    let mut output = unsafe {
-        Vec::uninit(zstd_safe::compress_bound(bytes.len()))
-    };
+    let mut output = unsafe { Vec::uninit(zstd_safe::compress_bound(bytes.len())) };
     let n = ZSTD_CCTX
         .with(|cctx| {
             cctx.borrow_mut()
@@ -38,9 +36,7 @@ pub fn decompress(bytes: &[u8], max_size: Option<usize>) -> Result<Vec<u8>, Erro
         }
     }
     // safety: output is not read before initialized
-    let mut output = unsafe {
-        Vec::uninit(decompress_bound as usize)
-    };
+    let mut output = unsafe { Vec::uninit(decompress_bound as usize) };
     let n = ZSTD_DCTX
         .with(|dctx| dctx.borrow_mut().decompress(&mut output[..], bytes))
         .or_else(|e| Err(error!("decompress failed: {:?}", e)))?;

@@ -4,14 +4,15 @@ use crate::{
     util::Error,
 };
 
-use super::{Amount, TxKind};
+use super::{Amount, TransactionKind};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 #[repr(C)]
-pub struct Tx {
+pub struct Transaction {
     pub nonce: u64,
     pub from: Public,
-    pub kind: TxKind,
+    pub kind: TransactionKind,
     pub balance: Amount,
     pub amount: Amount,
     pub to: Public,
@@ -19,9 +20,9 @@ pub struct Tx {
     pub signature: Signature,
 }
 
-impl Tx {
+impl Transaction {
     pub fn verify_and_hash(&self) -> Result<Hash, Error> {
-        if self.kind == TxKind::Normal && self.amount == Amount::zero() {
+        if self.kind == TransactionKind::Normal && self.amount == Amount::zero() {
             return Err(error!("normal tx must transfer > 0"));
         }
         let mut bytes = [0u8; 96];

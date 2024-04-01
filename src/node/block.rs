@@ -1,5 +1,8 @@
 use crate::{
-    protocol::{Slot, Tx, Vote}, error, keys::{Hash, Private, Public, Signature}, util::Error
+    error,
+    keys::{Hash, Private, Public, Signature},
+    protocol::{Slot, Transaction, Vote},
+    util::Error,
 };
 
 pub struct Block {
@@ -8,7 +11,7 @@ pub struct Block {
     pub slot: Slot,
     pub previous: Hash,
     pub hash: Hash,
-    pub transactions: Vec<Tx>,
+    pub transactions: Vec<Transaction>,
     pub votes: Vec<Vote>,
 }
 
@@ -60,9 +63,9 @@ impl Block {
     }
     pub fn is_genesis(&self) -> bool {
         self.transactions.is_empty()
-        && self.votes.is_empty()
-        && self.slot == Slot::zero()
-        && self.previous == Hash::zero()
+            && self.votes.is_empty()
+            && self.slot == Slot::zero()
+            && self.previous == Hash::zero()
     }
     pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let tx_hash = match self.transactions.len() {

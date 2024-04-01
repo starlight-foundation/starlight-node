@@ -25,7 +25,7 @@ pub struct Hash([u8; 32]);
 hexify!(Hash, "hash");
 
 impl Hash {
-    pub const LEN: usize = 32;
+    const LEN: usize = 32;
 
     pub fn random() -> Self {
         Self(rand::random())
