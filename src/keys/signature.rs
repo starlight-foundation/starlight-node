@@ -5,7 +5,7 @@ use crate::hexify;
 
 /// A ed25519+blake2 signature that can be generated with [Private](crate::Private) and
 /// checked with [Public](crate::Public).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(align(8))]
 pub struct Signature([u8; 64]);
 

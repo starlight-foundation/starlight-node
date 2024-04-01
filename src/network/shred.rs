@@ -386,13 +386,12 @@ pub struct ShredList {
 impl ShredList {
     // Creates a new ShredList with the specified maximum data size
     pub fn new(max_data_size: u32) -> Self {
-        let batches = Vec::new();
         Self {
             initialized: false,
             max_data_size,
             claimed_data_size: 0,
             ready: BitVec::new(),
-            batches,
+            batches: Vec::new(),
         }
     }
 

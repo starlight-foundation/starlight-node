@@ -13,7 +13,30 @@ pub struct Bank {
 impl Bank {
     pub fn new(genesis: Public) -> Self {
         let accounts = LeapMap::new();
-        accounts.insert(genesis, Account::genesis(genesis));
+        // insert genesis
+        accounts.insert(
+            genesis,
+            Account {
+                latest_balance: Amount::initial_supply(),
+                finalized_balance: Amount::initial_supply(),
+                weight: Amount::initial_supply(),
+                batch: Batch::null(),
+                nonce: 0,
+                rep: genesis,
+            },
+        );
+        // insert burn address
+        accounts.insert(
+            Public::zero(),
+            Account {
+                latest_balance: Amount::zero(),
+                finalized_balance: Amount::zero(),
+                weight: Amount::zero(),
+                batch: Batch::null(),
+                nonce: 0,
+                rep: Public::zero(),
+            },
+        );
         Self {
             accounts,
             batch_factory: BatchFactory::new(),
@@ -67,133 +90,154 @@ impl Bank {
         self.accounts.get(key)?.value()
     }
 
-    // Queue the send half of a transaction
-    fn queue_send(&self, tx: &Transaction, batch: Batch) -> Result<(), ()> {
-        match tx.kind {
-            TransactionKind::Normal => self.update_account(&tx.from, |a| {
-                // Return an error if the nonce, balance, or batch doesn't match
-                if a.nonce != tx.nonce || a.latest_balance < tx.amount || a.batch == batch {
+    /// Queue the transaction to ensure there aren't any conflicts with any others in the batch
+    /// Queuing only affects the validity & behavior of other transactions within the provided `batch`
+    pub fn queue_transaction(&self, tr: &Transaction, batch: Batch) -> Result<(), ()> {
+        match tr.kind {
+            // this does allow conflicting opens in a single block,
+            // which is OK tbh and will be blocked anyway by all
+            // but the most pathological of leaders
+            // we'll resolve the issue of conflicting reps by picking
+            // the largest (by public key) representative
+            TransactionKind::Open => {
+                // 1) ensure account does not already exist
+                if self.accounts.contains_key(&tr.from) {
                     return Err(());
                 }
-                let new_balance = a.latest_balance - tx.amount;
-                // Return an error if the new balance doesn't match the expected balance
-                if new_balance != tx.balance {
+                // 2) ensure representative exists
+                if !self.accounts.contains_key(&tr.to) {
                     return Err(());
                 }
-                a.batch = batch;
-                Ok(())
-            }),
-            TransactionKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
-                // Return an error if the nonce or batch doesn't match
-                if a.nonce != tx.nonce || a.batch == batch {
+            }
+            TransactionKind::Transfer => {
+                // 1) ensure receiving side exists
+                if !self.accounts.contains_key(&tr.to) {
                     return Err(());
                 }
-                // Update the account batch
-                a.batch = batch;
-                Ok(())
-            }),
-        }
+                // 2) set marker on from side
+                self.update_account(&tr.from, |a| {
+                    // Return an error if the nonce, balance, or batch doesn't match
+                    if a.nonce != tr.nonce || a.latest_balance < tr.amount || a.batch == batch {
+                        return Err(());
+                    }
+                    let new_balance = a.latest_balance - tr.amount;
+                    // Return an error if the new balance doesn't match the expected balance
+                    if new_balance != tr.balance {
+                        return Err(());
+                    }
+                    a.batch = batch;
+                    Ok(())
+                })?;
+            }
+            TransactionKind::ChangeRepresentative => {
+                // 1) ensure rep exists
+                if !self.accounts.contains_key(&tr.to) {
+                    return Err(());
+                }
+                // 2) set batch
+                self.update_account(&tr.from, |a| {
+                    // Return an error if the nonce or batch doesn't match
+                    if a.nonce != tr.nonce || a.batch == batch {
+                        return Err(());
+                    }
+                    // Update the account batch
+                    a.batch = batch;
+                    Ok(())
+                })?;
+            }
+        };
+        Ok(())
     }
 
-    // Execute the send half of a transaction
-    fn execute_send(&self, tx: &Transaction) {
-        self.update_account(&tx.from, |a| {
-            a.nonce += 1;
-            a.latest_balance -= tx.amount;
-            Ok(())
-        })
-        .unwrap();
-    }
-
-    // Process the send half of a transaction
-    fn process_send(&self, tx: &Transaction, batch: Batch) -> Result<(), ()> {
-        match tx.kind {
-            TransactionKind::Normal => self.update_account(&tx.from, |a| {
-                // Return an error if the nonce, balance, or batch doesn't match
-                if a.nonce != tx.nonce || a.latest_balance < tx.amount || a.batch == batch {
-                    return Err(());
-                }
-                let new_balance = a.latest_balance - tx.amount;
-                // Return an error if the new balance doesn't match the expected balance
-                if new_balance != tx.balance {
-                    return Err(());
-                }
-                // Increment the account nonce
-                a.nonce += 1;
-                // Deduct the transaction amount from the account balance
-                a.latest_balance -= tx.amount;
-                // Update the account batch
-                a.batch = batch;
-                Ok(())
-            }),
-            TransactionKind::ChangeRepresentative => self.update_account(&tx.from, |a| {
-                // Return an error if the nonce or batch doesn't match
-                if a.nonce != tx.nonce || a.batch == batch {
-                    return Err(());
-                }
-                // Increment the account nonce
-                a.nonce += 1;
-                // Update the account batch
-                a.batch = batch;
-                Ok(())
-            }),
+    /// Finish a queued transaction
+    pub fn finish_transaction(&self, tr: &Transaction, batch: Batch) {
+        match tr.kind {
+            TransactionKind::Transfer => {
+                // deduct from send half
+                self.update_account(&tr.from, |a| {
+                    a.nonce += 1;
+                    a.latest_balance -= tr.amount;
+                    Ok(())
+                })
+                .unwrap();
+                // add to recv half
+                self.update_account(&tr.to, |a| {
+                    a.latest_balance += tr.amount;
+                    Ok(())
+                })
+                .unwrap();
+            }
+            TransactionKind::ChangeRepresentative => {
+                // update representative
+                self.update_account(&tr.from, |a| {
+                    a.rep = tr.to;
+                    Ok(())
+                })
+                .unwrap();
+            }
+            TransactionKind::Open => {
+                self.insert_or_update_account(
+                    &tr.from,
+                    || Account {
+                        latest_balance: Amount::zero(),
+                        finalized_balance: Amount::zero(),
+                        weight: Amount::zero(),
+                        batch,
+                        nonce: 0,
+                        rep: tr.to,
+                    },
+                    |a| {
+                        // there may be multiple opens in a single block,
+                        // so we have to handle the case of conflicting representatives
+                        // gracefully.
+                        if tr.to > a.rep {
+                            a.rep = tr.to;
+                        }
+                    },
+                )
+                .unwrap();
+            }
         }
-    }
-
-    // Process the receive half of the transaction
-    fn process_recv(&self, tx: &Transaction) {
-        // Skip processing for change representative transactions
-        if tx.kind == TransactionKind::ChangeRepresentative {
-            return;
-        }
-        self.insert_or_update_account(
-            &tx.to,
-            // Create a new account with the transaction amount as the latest balance
-            || Account::with_latest_balance(tx.amount),
-            |a| {
-                // Add the transaction amount to the account balance
-                a.latest_balance += tx.amount;
-            },
-        );
     }
 
     // Revert a transaction
     fn revert_transaction(&self, tx: &Transaction) {
-        if tx.kind == TransactionKind::ChangeRepresentative {
-            self.update_account(&tx.from, |a| {
-                // Decrement the account nonce
-                a.nonce -= 1;
-                Ok(())
-            })
-            .unwrap();
-            return;
-        }
-        self.update_account(&tx.from, |a| {
-            // Decrement the account nonce
-            a.nonce -= 1;
-            // Add the transaction amount back to the account balance
-            a.latest_balance += tx.amount;
-            Ok(())
-        })
-        .unwrap();
-        let remove_account = self
-            .update_account(&tx.to, |a| {
-                // Deduct the transaction amount from the account balance
-                a.latest_balance -= tx.amount;
-                // Check if the account should be removed
-                Ok(a.latest_balance == Amount::zero() && a.nonce == 0)
-            })
-            .unwrap();
-        if remove_account {
-            // Remove the account if it has zero balance and nonce
-            self.accounts.remove(&tx.to);
+        match tx.kind {
+            TransactionKind::Open => {
+                self.accounts.remove(&tx.from);
+            }
+            TransactionKind::ChangeRepresentative => {
+                self.update_account(&tx.from, |a| {
+                    // Decrement the account nonce
+                    a.nonce -= 1;
+                    Ok(())
+                })
+                .unwrap();
+            }
+            TransactionKind::Transfer => {
+                self.update_account(&tx.from, |a| {
+                    // Decrement the account nonce
+                    a.nonce -= 1;
+                    // Add the transaction amount back to the account balance
+                    a.latest_balance += tx.amount;
+                    Ok(())
+                })
+                .unwrap();
+                self.update_account(&tx.to, |a| {
+                    // Deduct the transaction amount from the account balance
+                    a.latest_balance -= tx.amount;
+                    Ok(())
+                })
+                .unwrap();
+            }
         }
     }
 
     // Finalize a transaction
     fn finalize_transaction(&self, tx: &Transaction) {
         match tx.kind {
-            TransactionKind::Normal => {
+            TransactionKind::Open => {}
+            TransactionKind::Transfer => {
                 let from_rep = self
                     .update_account(&tx.from, |a| {
                         // Deduct the transaction amount from the sender's finalized balance
@@ -214,69 +258,57 @@ impl Bank {
                     Ok(())
                 })
                 .unwrap();
-                self.insert_or_update_account(
-                    &to_rep,
-                    // Create a new account with the transaction amount as the weight
-                    || Account::with_weight(tx.amount),
-                    |a| {
-                        // Add the transaction amount to the representative's weight
-                        a.weight += tx.amount;
-                    },
-                );
+                self.update_account(&to_rep, |a| {
+                    // Add the transaction amount to the representative's weight
+                    a.weight += tx.amount;
+                    Ok(())
+                })
+                .unwrap();
             }
             TransactionKind::ChangeRepresentative => {
                 let (prev_rep, finalized_balance) = self
                     .update_account(&tx.from, |a| {
-                        let prev_rep = a.rep;
                         // Update the account representative to the new representative
-                        a.rep = tx.to;
+                        let prev_rep = std::mem::replace(&mut a.rep, tx.to);
                         Ok((prev_rep, a.finalized_balance))
                     })
                     .unwrap();
-                _ = self.update_account(&prev_rep, |a| {
+                self.update_account(&prev_rep, |a| {
                     // Deduct the finalized balance from the previous representative's weight
                     a.weight -= finalized_balance;
                     Ok(())
-                });
-                self.insert_or_update_account(
-                    &tx.to,
-                    // Create a new account with the transaction amount as the weight
-                    || Account::with_weight(tx.amount),
-                    |a| {
-                        // Add the transaction amount to the new representative's weight
-                        a.weight += tx.amount;
-                    },
-                );
+                })
+                .unwrap();
+                self.update_account(&tx.to, |a| {
+                    // Add the transaction amount to the new representative's weight
+                    a.weight += tx.amount;
+                    Ok(())
+                })
+                .unwrap();
             }
         }
     }
 
-    // Process a transaction
-    pub fn process_transaction(&self, tx: &Transaction, batch: Batch) -> Result<(), ()> {
-        // Process the send half of the transaction
-        self.process_send(tx, batch)?;
-        // Process the receive half of the transaction
-        self.process_recv(tx);
-        Ok(())
-    }
-
-    // Process a block of transactions
+    // Process a block of transactions outright, queuing and finishing them in a new batch
     pub fn process_block(&self, block: &Block) -> Result<(), ()> {
         // Generate a new batch ID
         let batch = self.new_batch();
-        for tx in block.transactions.iter() {
+        for tr in block.transactions.iter() {
             // Queue each transaction in the block to ensure there are no conflicts
-            self.queue_send(tx, batch)?;
+            self.queue_transaction(tr, batch)?;
         }
-        for tx in block.transactions.iter() {
+        for tr in block.transactions.iter() {
             // Execute the send half of each transaction in the block
-            self.execute_send(tx);
-        }
-        for tx in block.transactions.iter() {
-            // Process the receive half of each transaction in the block
-            self.process_recv(tx);
+            self.finish_transaction(tr, batch);
         }
         Ok(())
+    }
+
+    /// Finish a block of transactions which have all already been queued in a batch
+    pub fn finish_block(&self, block: Block, batch: Batch) {
+        for tr in block.transactions.iter() {
+            self.finish_transaction(tr, batch);
+        }
     }
 
     // Revert a block of transactions

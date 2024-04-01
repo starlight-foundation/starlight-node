@@ -15,39 +15,6 @@ pub struct Account {
     pub rep: Public,
 }
 
-impl Account {
-    pub fn with_weight(weight: Amount) -> Self {
-        Self {
-            weight,
-            latest_balance: Amount::zero(),
-            finalized_balance: Amount::zero(),
-            batch: Batch::null(),
-            nonce: 0,
-            rep: Public::zero(),
-        }
-    }
-    pub fn with_latest_balance(latest_balance: Amount) -> Self {
-        Self {
-            latest_balance,
-            finalized_balance: Amount::zero(),
-            weight: Amount::zero(),
-            batch: Batch::null(),
-            nonce: 0,
-            rep: Public::zero(),
-        }
-    }
-    pub fn genesis(public: Public) -> Self {
-        Self {
-            latest_balance: Amount::initial_supply(),
-            finalized_balance: Amount::initial_supply(),
-            weight: Amount::initial_supply(),
-            batch: Batch::null(),
-            nonce: 0,
-            rep: public,
-        }
-    }
-}
-
 impl leapfrog::Value for Account {
     fn is_redirect(&self) -> bool {
         self.latest_balance == Amount::from_raw(u64::MAX)

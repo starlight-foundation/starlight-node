@@ -3,12 +3,11 @@ use crate::error;
 use crate::util::Error;
 use crate::util::{deserialize_from_str, expect_len, to_hex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use std::str::FromStr;
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord)]
 pub struct Difficulty(u64);
 
 impl Difficulty {
@@ -55,12 +54,6 @@ impl FromStr for Difficulty {
         hex::decode_to_slice(s, &mut slice)
             .map_err(|source| error!("can't decode hex: {}", source))?;
         Ok(Difficulty::from_be_slice(&slice).unwrap())
-    }
-}
-
-impl PartialOrd for Difficulty {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
     }
 }
 

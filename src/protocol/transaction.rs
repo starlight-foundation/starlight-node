@@ -22,9 +22,29 @@ pub struct Transaction {
 
 impl Transaction {
     pub fn verify_and_hash(&self) -> Result<Hash, Error> {
-        if self.kind == TransactionKind::Normal && self.amount == Amount::zero() {
-            return Err(error!("normal tx must transfer > 0"));
-        }
+        match self.kind {
+            TransactionKind::Transfer => {
+                if self.amount == Amount::zero() {
+                    return Err(error!("normal tx must transfer > 0"));
+                }
+            }
+            TransactionKind::Open => {
+                if self.amount != Amount::zero() {
+                    return Err(error!("open tx can't transfer"));
+                }
+                if self.balance != Amount::zero() {
+                    return Err(error!("open accounts start with a zero balance"));
+                }
+                if self.nonce != 0 {
+                    return Err(error!("open tx must have a nonce of 0"));
+                }
+            }
+            TransactionKind::ChangeRepresentative => {
+                if self.amount != Amount::zero() {
+                    return Err(error!("change representative tx must not transfer"));
+                }
+            }
+        };
         let mut bytes = [0u8; 96];
         bytes[0..8].copy_from_slice(&self.nonce.to_le_bytes());
         bytes[8..40].copy_from_slice(self.from.as_bytes());

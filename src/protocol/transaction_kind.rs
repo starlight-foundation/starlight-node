@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[repr(u64)]
 pub enum TransactionKind {
-    Normal = 0,
+    Transfer = 0,
     ChangeRepresentative = 1,
+    Open = 2,
 }
 impl TransactionKind {
     pub fn to_bytes(self) -> [u8; 8] {
