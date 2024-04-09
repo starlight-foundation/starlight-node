@@ -1,17 +1,22 @@
-use super::{Account, Batch, BatchFactory, Block};
+use super::{Account, Batch, BatchFactory, Block, Index, IndexFactory};
 use crate::keys::Public;
 use crate::protocol::{Amount, Epoch, Transaction, TransactionKind};
 use leapfrog::LeapMap;
 
 pub struct Bank {
-    // A map storing accounts indexed by public keys
+    /// A map storing accounts indexed by public keys
     accounts: LeapMap<Public, Account>,
-    // A factory for generating unique batch IDs
+    /// A factory for generating unique batch IDs
     batch_factory: BatchFactory,
+    /// A factory for generating unique account indices
+    index_factory: IndexFactory,
 }
 
 impl Bank {
     pub fn new(genesis: Public) -> Self {
+        let index_factory = IndexFactory::new(
+            Index::zero()
+        );
         let accounts = LeapMap::new();
         // insert genesis
         accounts.insert(
@@ -23,6 +28,7 @@ impl Bank {
                 batch: Batch::null(),
                 nonce: 0,
                 rep: genesis,
+                index: index_factory.next(),
             },
         );
         // insert burn address
@@ -35,11 +41,13 @@ impl Bank {
                 batch: Batch::null(),
                 nonce: 0,
                 rep: Public::zero(),
+                index: index_factory.next(),
             },
         );
         Self {
             accounts,
             batch_factory: BatchFactory::new(),
+            index_factory
         }
     }
 
@@ -93,7 +101,7 @@ impl Bank {
     /// Queue the transaction to ensure there aren't any conflicts with any others in the batch
     /// Queuing only affects the validity & behavior of other transactions within the provided `batch`
     pub fn queue_transaction(&self, tr: &Transaction, batch: Batch) -> Result<(), ()> {
-        match tr.kind {
+        match tr.kind.get() {
             // this does allow conflicting opens in a single block,
             // which is OK tbh and will be blocked anyway by all
             // but the most pathological of leaders
@@ -145,13 +153,16 @@ impl Bank {
                     Ok(())
                 })?;
             }
+            TransactionKind::Unknown => {
+                return Err(());
+            }
         };
         Ok(())
     }
 
     /// Finish a queued transaction
     pub fn finish_transaction(&self, tr: &Transaction, batch: Batch) {
-        match tr.kind {
+        match tr.kind.get() {
             TransactionKind::Transfer => {
                 // deduct from send half
                 self.update_account(&tr.from, |a| {
@@ -185,6 +196,7 @@ impl Bank {
                         batch,
                         nonce: 0,
                         rep: tr.to,
+                        index: self.index_factory.next(),
                     },
                     |a| {
                         // there may be multiple opens in a single block,
@@ -197,14 +209,22 @@ impl Bank {
                 )
                 .unwrap();
             }
+            TransactionKind::Unknown => {}
         }
     }
 
     // Revert a transaction
     fn revert_transaction(&self, tx: &Transaction) {
-        match tx.kind {
+        match tx.kind.get() {
             TransactionKind::Open => {
-                self.accounts.remove(&tx.from);
+                // Remove the account for the map. If it existed --
+                if self.accounts.remove(&tx.from).is_some() {
+                    // Decrement the account index counter.
+                    // This action invalidates any indices created by the factory during
+                    // the current block's reversion. However, creating new accounts isn't necessary
+                    // in this phase, so this approach is acceptable.
+                    self.index_factory.prev();
+                }
             }
             TransactionKind::ChangeRepresentative => {
                 self.update_account(&tx.from, |a| {
@@ -230,12 +250,13 @@ impl Bank {
                 })
                 .unwrap();
             }
+            TransactionKind::Unknown => {}
         }
     }
 
     // Finalize a transaction
     fn finalize_transaction(&self, tx: &Transaction) {
-        match tx.kind {
+        match tx.kind.get() {
             TransactionKind::Open => {}
             TransactionKind::Transfer => {
                 let from_rep = self
@@ -286,6 +307,7 @@ impl Bank {
                 })
                 .unwrap();
             }
+            TransactionKind::Unknown => {}
         }
     }
 

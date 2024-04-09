@@ -5,13 +5,28 @@ use crate::{
     util::Error,
 };
 
+use super::Index;
+
 pub struct Block {
+    /// The leader of the current block
     pub leader: Public,
+    /// The signature of the leader of the current block
     pub signature: Signature,
+    /// The slot of this block
     pub slot: Slot,
+    /// The hash of the previous block
     pub previous: Hash,
+    /// The hash of the current block
     pub hash: Hash,
+    /// The hash of the first finalized block of the latest epoch preceding this one and containing finalized blocks.
+    pub special_block: Hash,
+    /// The merkle tree root of all accounts at `special_block`, ordered by their indices.
+    pub state_hash: Hash,
+    /// The index of the first account to be created in any blocks AFTER this one.
+    pub next_account_index: Index,
+    /// The transactions in this block.
     pub transactions: Vec<Transaction>,
+    /// The votes in this block.
     pub votes: Vec<Vote>,
 }
 
@@ -57,6 +72,9 @@ impl Block {
             slot: Slot::zero(),
             previous: zero_hash,
             hash,
+            special_block: zero_hash,
+            state_hash: zero_hash,
+            next_account_index: Index::zero().plus(1),
             transactions: Vec::new(),
             votes: Vec::new(),
         }
@@ -66,6 +84,8 @@ impl Block {
             && self.votes.is_empty()
             && self.slot == Slot::zero()
             && self.previous == Hash::zero()
+            && self.special_block == Hash::zero()
+            && self.state_hash == Hash::zero()
     }
     pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let tx_hash = match self.transactions.len() {

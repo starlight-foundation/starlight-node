@@ -1,6 +1,7 @@
 mod encoding;
 mod error;
 mod version;
+mod archived;
 
 use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
 use serde::{de::DeserializeOwned, Serialize};
@@ -12,6 +13,7 @@ pub use encoding::{
 };
 pub use error::Error;
 pub use version::Version;
+pub use archived::{Archived, ArchivableTo};
 
 #[macro_export]
 macro_rules! static_assert {
@@ -63,3 +65,12 @@ pub trait DefaultInitVec<T: Default> {
 impl<T: Default> DefaultInitVec<T> for Vec<T> {}
 
 impl<T: BitStore, O: BitOrder> UninitBitVec<T, O> for BitVec<T, O> {}
+
+pub const fn view_as_bytes<T: Copy>(value: &T) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            value as *const T as *const u8,
+            std::mem::size_of::<T>(),
+        )
+    }
+}

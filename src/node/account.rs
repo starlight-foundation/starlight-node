@@ -3,7 +3,7 @@ use crate::{
     protocol::{Amount, Slot},
 };
 
-use super::Batch;
+use super::{Batch, Index};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Account {
@@ -13,6 +13,7 @@ pub struct Account {
     pub weight: Amount,
     pub nonce: u64,
     pub rep: Public,
+    pub index: Index
 }
 
 impl leapfrog::Value for Account {
@@ -32,6 +33,7 @@ impl leapfrog::Value for Account {
             batch: Batch::null(),
             nonce: 0,
             rep: Public::zero(),
+            index: Index::zero(),
         }
     }
 
@@ -43,6 +45,7 @@ impl leapfrog::Value for Account {
             batch: Batch::null(),
             nonce: 0,
             rep: Public::zero(),
+            index: Index::zero(),
         }
     }
 }

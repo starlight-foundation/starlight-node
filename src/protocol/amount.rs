@@ -30,12 +30,6 @@ impl Amount {
     pub const fn max() -> Self {
         Amount(u64::MAX)
     }
-    pub const fn to_bytes(self) -> [u8; 8] {
-        self.0.to_le_bytes()
-    }
-    pub const fn from_bytes(bytes: [u8; 8]) -> Self {
-        Self(u64::from_le_bytes(bytes))
-    }
 }
 
 impl Add for Amount {
