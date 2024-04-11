@@ -18,9 +18,7 @@ pub struct Block {
     pub previous: Hash,
     /// The hash of the current block
     pub hash: Hash,
-    /// The hash of the first finalized block of the latest epoch preceding this one and containing finalized blocks.
-    pub special_block: Hash,
-    /// The merkle tree root of all accounts at `special_block`, ordered by their indices.
+    /// The merkle tree root of all accounts at this block
     pub state_hash: Hash,
     /// The index of the first account to be created in any blocks AFTER this one.
     pub next_account_index: Index,
@@ -72,7 +70,6 @@ impl Block {
             slot: Slot::zero(),
             previous: zero_hash,
             hash,
-            special_block: zero_hash,
             state_hash: zero_hash,
             next_account_index: Index::zero().plus(1),
             transactions: Vec::new(),
@@ -84,7 +81,6 @@ impl Block {
             && self.votes.is_empty()
             && self.slot == Slot::zero()
             && self.previous == Hash::zero()
-            && self.special_block == Hash::zero()
             && self.state_hash == Hash::zero()
     }
     pub fn verify_and_hash(&self) -> Result<Hash, Error> {

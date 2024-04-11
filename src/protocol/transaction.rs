@@ -13,7 +13,6 @@ pub struct Transaction {
     pub nonce: u64,
     pub from: Public,
     pub kind: Archived<TransactionKind, u64>,
-    pub balance: Amount,
     pub amount: Amount,
     pub to: Public,
     pub work: Work,
@@ -31,9 +30,6 @@ impl Transaction {
             TransactionKind::Open => {
                 if self.amount != Amount::zero() {
                     return Err(error!("open tx can't transfer"));
-                }
-                if self.balance != Amount::zero() {
-                    return Err(error!("open accounts start with a zero balance"));
                 }
                 if self.nonce != 0 {
                     return Err(error!("open tx must have a nonce of 0"));

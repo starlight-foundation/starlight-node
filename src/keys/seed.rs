@@ -5,6 +5,15 @@ use crate::keys::private::Private;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
+use blake2b_simd::Params;
+
+#[static_init::dynamic]
+static BLAKE2B_PARAMS: Params = {
+    let mut params = Params::new();
+    params.hash_length(32);
+    params
+};
+
 /// 256 bit seed used to derive multiple addresses.
 ///
 /// See https://docs.nano.org/integration-guides/the-basics/#seed for details.
@@ -34,6 +43,6 @@ impl Seed {
         let mut buf = [0u8; Self::LEN + 4];
         buf[..Self::LEN].copy_from_slice(&self.0);
         buf[Self::LEN..].copy_from_slice(&index.to_be_bytes());
-        Private(Hash::digest(&buf).to_bytes())
+        Private(BLAKE2B_PARAMS.hash(&buf).as_bytes().try_into().unwrap())
     }
 }

@@ -13,7 +13,7 @@ pub struct Account {
     pub weight: Amount,
     pub nonce: u64,
     pub rep: Public,
-    pub index: Index
+    pub index: Index,
 }
 
 impl leapfrog::Value for Account {

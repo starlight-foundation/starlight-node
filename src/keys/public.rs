@@ -142,7 +142,7 @@ impl Public {
     const ADDRESS_CHECKSUM_LEN: usize = 5;
 
     fn dalek_key(&self) -> Result<PublicKey, Error> {
-        Ok(PublicKey::from_bytes(&self.0).map_err(|e| error!("Converting to PublicKey: {}", e))?)
+        PublicKey::from_bytes(&self.0).map_err(|_| error!("invalid public key"))
     }
 
     fn checksum(&self) -> [u8; 5] {
@@ -154,9 +154,7 @@ impl Public {
     }
 
     pub fn verify(&self, hash: &Hash, signature: &Signature) -> Result<(), Error> {
-        let dalek_key = self.dalek_key().or_else(|_| {
-            return Err(error!("invalid public key"));
-        })?;
+        let dalek_key = self.dalek_key()?;
         let signature_internal = signature.internal().or_else(|_| {
             return Err(error!("invalid signature"));
         })?;

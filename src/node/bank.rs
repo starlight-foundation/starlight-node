@@ -14,9 +14,7 @@ pub struct Bank {
 
 impl Bank {
     pub fn new(genesis: Public) -> Self {
-        let index_factory = IndexFactory::new(
-            Index::zero()
-        );
+        let index_factory = IndexFactory::new(Index::zero());
         let accounts = LeapMap::new();
         // insert genesis
         accounts.insert(
@@ -47,7 +45,7 @@ impl Bank {
         Self {
             accounts,
             batch_factory: BatchFactory::new(),
-            index_factory
+            index_factory,
         }
     }
 
@@ -126,11 +124,6 @@ impl Bank {
                 self.update_account(&tr.from, |a| {
                     // Return an error if the nonce, balance, or batch doesn't match
                     if a.nonce != tr.nonce || a.latest_balance < tr.amount || a.batch == batch {
-                        return Err(());
-                    }
-                    let new_balance = a.latest_balance - tr.amount;
-                    // Return an error if the new balance doesn't match the expected balance
-                    if new_balance != tr.balance {
                         return Err(());
                     }
                     a.batch = batch;

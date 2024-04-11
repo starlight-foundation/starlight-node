@@ -53,10 +53,6 @@ impl Private {
         PublicKey::from(&self.to_ed25519_dalek())
     }
 
-    pub fn to_address(&self) -> String {
-        self.to_public().to_address()
-    }
-
     pub fn sign(&self, hash: &Hash) -> Signature {
         let dalek = self.to_ed25519_dalek();
         let public = PublicKey::from(&dalek);

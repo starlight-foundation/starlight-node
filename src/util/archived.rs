@@ -16,10 +16,12 @@ pub struct Archived<T: ArchivableTo<S>, S> {
 
 impl<T: ArchivableTo<S>, S> Archived<T, S> {
     pub fn new(v: T) -> Self {
-        Self { source: v.archive(), _phantom: PhantomData }
+        Self {
+            source: v.archive(),
+            _phantom: PhantomData,
+        }
     }
     pub fn get(self) -> T {
         T::unarchive(self.source)
     }
 }
-

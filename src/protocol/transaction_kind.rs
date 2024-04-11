@@ -8,7 +8,7 @@ pub enum TransactionKind {
     Transfer = 0,
     ChangeRepresentative = 1,
     Open = 2,
-    Unknown = 3
+    Unknown = 3,
 }
 impl ArchivableTo<u64> for TransactionKind {
     fn archive(self) -> u64 {
@@ -23,4 +23,3 @@ impl ArchivableTo<u64> for TransactionKind {
         }
     }
 }
-

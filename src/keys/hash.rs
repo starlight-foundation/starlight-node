@@ -1,23 +1,10 @@
 use std::io::Write;
 
-use blake2b_simd::{Params, State};
+use blake3::Hasher;
 
 use crate::hexify;
 
-#[static_init::dynamic]
-static PARAMS: Params = {
-    let mut params = Params::new();
-    params.hash_length(32);
-    params
-};
-
-#[static_init::dynamic]
-static STATE: State = {
-    let mut params = Params::new();
-    params.hash_length(32);
-    params.to_state()
-};
-
+/// A 32-byte blake3 hash
 #[derive(Clone, Copy, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord)]
 #[repr(align(8))]
 pub struct Hash([u8; 32]);
@@ -31,12 +18,8 @@ impl Hash {
         Self(rand::random())
     }
 
-    pub fn to_bytes(self) -> [u8; 32] {
-        self.0
-    }
-
     pub fn digest(slice: &[u8]) -> Self {
-        Self(PARAMS.hash(slice).as_bytes().try_into().unwrap())
+        Self(blake3::hash(slice).into())
     }
 
     pub const fn zero() -> Self {
@@ -44,10 +27,10 @@ impl Hash {
     }
 }
 
-pub struct HashBuilder(State);
+pub struct HashBuilder(Hasher);
 impl HashBuilder {
     pub fn new() -> Self {
-        Self(STATE.clone())
+        Self(Hasher::new())
     }
 
     pub fn update(&mut self, data: &[u8]) {
@@ -55,8 +38,7 @@ impl HashBuilder {
     }
 
     pub fn finish(&self) -> Hash {
-        let mut v = [0u8; 32];
-        Hash(self.0.finalize().as_bytes().try_into().unwrap())
+        Hash(self.0.finalize().into())
     }
 }
 
