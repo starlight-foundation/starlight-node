@@ -6,19 +6,62 @@ The Starlight protocol is a consensus algorithm that intends to fulfill Bitcoin'
 TODO - improve the coherence + organization of this document
 
 ## Introduction
-The state of the Starlight network is defined by the set of transactions on its blockchain. Instead of requiring mining or staking to extend the chain, Starlight adopts a slot-based mechanism. Time is divided into slots of a certain length (currently 500ms). For each slot, a validator is randomly selected, based on their weight, to be the leader for that slot, the unique account that is allowed to produce a block to extend the chain. Validators forward received transactions directly to the leader, who bundles them into a block, which is broken into shreds that are broadcast through the network.
+Starlight is a blockchain protocol designed for high scalability, security, and decentralization, offering significant improvements over systems like Bitcoin and Ethereum. It features a slot-based consensus mechanism for rapid block times and deterministic finality, achieved through randomized leader selection and a modified version of the Casper-FFG finality gadget.
 
-Some blockchains, such as Bitcoin, rely on probabilistic finality: a transaction is never truly "irreversible", only more and more likely to be so as more and more blocks are built on top of it. Starlight, in contrast, provides deterministic finality. Every Starlight account selects a representative, a validator that they believe to be trustworthy. The sum of the balances of all the accounts who choose a certain validator as their representative make up that validator’s weight, their voting power in the Starlight consensus protocol. Validators vote for blocks using a slight variant of the Casper-FFG protocol, which provides a mathematical guarantee that so long as 66% of the network voting weight remains non-malicious, any block that is considered finalized will be forever accepted by all nodes. Starlight transactions typically achieve finality within 1 to 2 seconds.
+Here's how it works:
+- Time is broken up into short slots, each 500ms long. 
+- For each time slot, the network randomly picks a single validator to be the slot leader. Only the slot leader can add a new block of transactions to the chain for that slot.
+- The chance of a validator being picked as the slot leader depends on their weight - basically, how much Starlight currency is delegated to them. The more weight, the higher their chances.
+- All other validators send the transactions they receive from users directly to the current slot leader. 
+- The slot leader bundles these transactions into a block. They then split up the block data and broadcast it to the network, so all nodes can add the new block to their copy of the chain.
+
+Starlight also has deterministic finality. In simple terms:
+- Each Starlight account picks a validator to be their representative. 
+- A validator's weight is the total amount of Starlight currency held by all the accounts that chose them as a representative.
+- Validators use their weight to vote on which blocks should be finalized, using a tweaked version of the Casper FFG protocol. 
+- Mathematically, as long as more than 66% of the total validator weight is voting honestly, any blocks they vote to finalize are guaranteed to be part of the permanent, canonical chain. 
+- This finality voting process lets Starlight transactions be finalized as irreversible after just 1-2 seconds, much faster than probabilistic finality in chains like Bitcoin.
 
 ## Leader schedule
-Let us define an epoch boundary block as the block with the lowest slot in an epoch. Two blocks may conflict to be the epoch boundary block for a certain epoch, but after finalization, one of them will resolve as the winner.
+Let's define some terms:
+- **EBB (Epoch Boundary Block)**: This is the first block in any epoch.
+- **DB (Defining Block)**: This block determines the leader schedule for future blocks.
 
-Let us define the special block for a certain epoch as follows: the first epoch has no special block. For all subsequent epochs, their special block is the latest finalized epoch boundary block in existence, not including the epoch boundary block for their current epoch. For example, let's say we have two epochs, 0 and 1. Epoch 0 has no special block. Epoch 1's special block is defined as the finalized epoch boundary block of epoch 0. This holds true even if epoch 1 finalizes an epoch boundary block of its own. Note that two nodes may have different views of finality, and thus different views of the special block for an epoch. This is OK.
+Rules for Defining Blocks (DBs):
+- In the initial epoch (epoch 0), blocks do not have a Defining Block.
+- In subsequent epochs, a block's DB is the EBB from the most recent completed epoch on its branch of the blockchain.
 
-The Starlight leader schedule is defined as follows. For the first epoch containing the genesis block, the genesis account is the leader for all slots. For all subsequent epochs, the leader schedule is generated based on a weighted probability distribution:
-- The accounts included in this distribution are all accounts who have finalized votes in the epoch preceding the epoch of the special block for that epoch.
-- The weight of an account is the sum of the balances of its delegates.
-- The distribution is generated by a deterministic pseudo-random number generator, seeded based on the special block's epoch number. The voters are sorted by their public key, to ensure the same results across all nodes.
+Examples to illustrate:
+1. **Linear Progression of Epochs (0, 1, 2, 3)**:
+    - **Epoch 0**: Blocks have no DB.
+    - **Epoch 1**: Each block's DB is the EBB of Epoch 0.
+    - **Epoch 2**: No blocks, hence no DBs.
+    - **Epoch 3**: Each block's DB is the EBB of Epoch 1.
+
+2. **Scenario with a Forked Blockchain**:
+    - **Epoch 0**: Starts as a single chain, so blocks have no DB.
+    - **Epoch 1**: The chain forks into two.
+    - **Epoch 2 and 3**: Both forks continue independently.
+    - For blocks in Epoch 1 on both forks: DB is the EBB of Epoch 0.
+    - For blocks in Epoch 2 on both forks: DB is the EBB of Epoch 1 from their respective forks.
+    - For blocks in Epoch 3:
+        - **Fork 1**: DB is the EBB of Epoch 2 from Fork 1.
+        - **Fork 2**: DB is the EBB of Epoch 2 from Fork 2.
+
+The Starlight protocol establishes a leader schedule for each fork of the blockchain, determining which account is responsible for producing blocks in each time slot. Here's how it works:
+
+1. In the very first epoch (Epoch 0), which includes the genesis block, the genesis account is designated as the leader for all slots. 
+
+2. For all subsequent epochs, the leader schedule is determined using a weighted random selection process:
+
+   a) The process considers all accounts that participated in voting on the fork during a specific reference epoch. This reference epoch is determined by the epoch of the DB of the latest block's DB, i.e. the epoch of the DB before the current DB for that fork.
+      
+   b) Each account's weight in the selection process is proportional to the total balance of all accounts that have delegated to it at the time of the reference epoch's defining block.
+   
+   c) A deterministic pseudo-random number generator, seeded with the epoch number, is used to randomly select leaders from the weighted pool of accounts.
+      - To ensure consistency across all nodes, accounts are sorted ascending by their public key before sampling.
+
+This results in a fair, deterministic, and unbiasable leader schedule for each fork and epoch, based on the state of the network at certain reference points.
 
 ## State preservation
 Some blockchains, like Bitcoin, rely on all transactions to be replayed from genesis in order to build the ledger state; this becomes more and more difficult as time goes on. In a high-performance blockchain such as Starlight, it would be an unsustainable solution.
@@ -28,8 +71,7 @@ Starlight solves this problem by maintaining a merkle tree of all accounts at th
 Light clients can receive proofs against the state hash in order to verify the correctness of the state, e.g. the balance in their account.
 
 ## Cryptography
-For key derivation, Starlight uses ed25519 with blake2b-512 as the key derivation function.
-For hashing, Starlight uses blake3.
+To generate private keys from seeds, Starlight uses blake2b-256. For public key derivation, Starlight uses ed25519 with blake2b-512 as the key derivation function. For hashing, Starlight uses blake3.
 
 ## Consensus
 The Starlight protocol is built upon a set of accounts, each with a balance of SLT tokens. The balance in SLT of an account $A$ is denoted by $balance(A)$.
@@ -68,7 +110,7 @@ Starlight is not a proof-of-work protocol like Bitcoin; thus, here are no inhere
 
 ![Figure 3](fig3.jpg)
 
-If time synchronization is so important to Starlight, then how does the protocol deal with the possibility of desynchronized clocks? The answer is that every message $M$ is stamped with a slot number $\text{slot}(M)$, and that no principal representative $P$ will process a message $M$ until its local slot number $s$ is greater than or equal to $\text{slot}(M)$. This condition alone is sufficient to ensure that if a supermajority of the network has a local slot number less than or equal to a certain slot number $s$, the network will neither confirm nor recognize any block with a slot number greater than $s$ (more on this later).
+If time synchronization is so important to Starlight, then how does the protocol deal with the possibility of desynchronized clocks? The answer is that every message $M$ is stamped with a slot number $\text{slot}(M)$, and that no principal representative $P$ will process a message $M$ until its local slot number $s$ is greater than or equal to $\text{slot}(M)$. This condition alone is sufficient to ensure that if a supermajority of the network has a local slot number less than or equal to a certain slot number $s$, the network will neither finalize nor justify any block with a slot number greater than $s$ (more on this later).
 
 Through a deterministic pseudo-random number generator, the Starlight network generates a leader schedule $L$ according to a weighted probability distribution, where a principal representative $P$ with a higher weight$(P)$ has a higher chance of being selected for any given slot in the schedule. $L: S \rightarrow P$ is simply a list of principal representatives ordered by slot number; for any slot $s$, $L_s$ is called the leader for slot $s$.
 
@@ -84,19 +126,19 @@ First, let's introduce the concept of a block-slot pair, or just a pair for shor
 
 We can now define a vote $V = I_1 \rightarrow I_2$ as a type of message, where $I_1$ and $I_2$ are pairs, slot($I_2$)  $>$ slot($I_1$), and block($I_2$) is a descendant, or child, of block($I_1$). slot($V$) = slot($I_1$) or the vote $V$ is invalid; i.e., a vote cast in a slot $s$ must target a par with that slot $s$.
 
-We can now introduce the concept of pair recognition. For any view $W$, a park $I$ is recognized in $(I \subseteq R(W))$, if it satisfies any of the following two rules:
+We can now introduce the concept of pair recognition. For any view $W$, a park $I$ is justified in $(I \subseteq J(W))$, if it satisfies any of the following two rules:
 
-- Genesis Rule: $(B_g, 0) \in R(W)$
+- Genesis Rule: $(B_g, 0) \in J(W)$
 
-- Recognition Rule: $(B_2, S_2) \in R(W)$ if there exists a pair $(B_1, S_1) \in R(W)$ where the total weight of all votes $V = (B_1, S_1) \rightarrow (B_2, S_2)$ exceeds $\frac{2}{3}$ of the total weight of all principal representatives $S_p$; i.e., $\sum_{V = (B_1, S_1) \rightarrow (B_2, S_2) \in W} \text{weight}(\text{author}(V)) > \frac{2}{3} \sum_{p \in S_p} \text{weight}(P)$. In this condition, we write $(B_1, S_1) \xrightarrow{R} (B_2, S_2)$.
+- Justification Rule: $(B_2, S_2) \in J(W)$ if there exists a pair $(B_1, S_1) \in J(W)$ where the total weight of all votes $V = (B_1, S_1) \rightarrow (B_2, S_2)$ exceeds $\frac{2}{3}$ of the total weight of all principal representatives $S_p$; i.e., $\sum_{V = (B_1, S_1) \rightarrow (B_2, S_2) \in W} \text{weight}(\text{author}(V)) > \frac{2}{3} \sum_{p \in S_p} \text{weight}(P)$. In this condition, we write $(B_1, S_1) \xrightarrow{R} (B_2, S_2)$.
 
-Next, we introduce the concept of pair confirmation; a pair $I$ is confirmed in $W$ ($I \subseteq C(W)$) if it satisfies any of:
+Next, we introduce the concept of pair finalization; a pair $I$ is finalized in $W$ ($I \subseteq F(W)$) if it satisfies any of:
 
-- Genesis Rule: $(B_g, 0) \in C(W)$
+- Genesis Rule: $(B_g, 0) \in F(W)$
 
-- Confirmation Rule: $(B_s, S) \in C(W)$ if, for some $k \geq 1$:
+- Finalization Rule: $(B_s, S) \in F(W)$ if, for some $k \geq 1$:
 
-$\rightarrow$ (C1) $(B_0, s), (B_1, s + 1), \ldots, (B_{k-1}, s + k - 1) \in R(W)$
+$\rightarrow$ (C1) $(B_0, s), (B_1, s + 1), \ldots, (B_{k-1}, s + k - 1) \in J(W)$
 
 $\rightarrow$ (C2) $B_0, B_1, \ldots, B_{k-1} \in \text{chain}(B_k)$
 
@@ -117,17 +159,17 @@ where $s_1 < s_2 < s_3 < s_4$.
 
 That was quite a lot of definitions! However, we now have all the ingredients necessary to prove the essential safety condition of the Starlight network:
 
-- As long as greater than 2/3 of the total voting weight has not violated any slashing conditions in a view W, no two blocks $B_1$, $B_2$ included in any two confirmed pairs $(B_1, s_1), (B_2, s_2) \in C(W)$ will ever conflict. 
+- As long as greater than 2/3 of the total voting weight has not violated any slashing conditions in a view W, no two blocks $B_1$, $B_2$ included in any two finalized pairs $(B_1, s_1), (B_2, s_2) \in F(W)$ will ever conflict. 
 
-Thus, any transaction included in any block B, part of a pair $(B, s) \in C(W)$, will never be reverted unless at least $\frac{1}{3}$ of the total voting weight is slashable.
+Thus, any transaction included in any block B, part of a pair $(B, s) \in F(W)$, will never be reverted unless at least $\frac{1}{3}$ of the total voting weight is slashable.
 
-Proof by contradiction: Let us assume there are two conflicting blocks $B_l$, $B_r$ and $(B_l, s_l), (B_r, s_r) \in C(W)$, and that $>\frac{2}{3}$ of the total voting weight is not slashable.
+Proof by contradiction: Let us assume there are two conflicting blocks $B_l$, $B_r$ and $(B_l, s_l), (B_r, s_r) \in F(W)$, and that $>\frac{2}{3}$ of the total voting weight is not slashable.
 
 First, we know that $s_l \neq s_r$; if $s_l = s_r$, this means there exists two votes $V_l$, $V_r$ both with $>\frac{2}{3}$ of the total voting weight where slot($V_l$) = slot($V_r$) = $s_l$ = $s_p$, meaning that at least $\frac{1}{3}$ of the total voting weight has violated slashing condition S2 (the minimum condition for two votes having $>\frac{2}{3}$ voting weight is $\frac{1}{3}^+$ of the voting weight defecting and submitting both $V_l$ and $V_r$, $\frac{1}{3}^-$ of the voting weight honestly submitting only $V_l$, and $\frac{1}{3}^-$ of the vting weight honestly submitting only $V_r$.
 
-Without loss of generality, let us assume that since $s_l \neq s_r$, $s_r$ is the later of the two slots (i.e. $s_r$ > $s_l$). We know that since $B_l$ is confirmed, $(B_l, s_l) \xrightarrow{R} (B_k, s_l + k)$ and $(B_l, s_l), (B_l, s_l + 1), \ldots, (B_{k-1}, S_l + k - 1)$ are all recognized. Since $(B_r, s_r)$ is confirmed (thus recognized) but conflicts with $s_r$, we know that $s_r$ cannot be any of $s_{l + 1}, \ldots, s_{l + k}$ because that would require double-recognition (violating slashing condition S2, as shown earlier).
+Without loss of generality, let us assume that since $s_l \neq s_r$, $s_r$ is the later of the two slots (i.e. $s_r$ > $s_l$). We know that since $B_l$ is finalized, $(B_l, s_l) \xrightarrow{R} (B_k, s_l + k)$ and $(B_l, s_l), (B_l, s_l + 1), \ldots, (B_{k-1}, S_l + k - 1)$ are all justified. Since $(B_r, s_r)$ is finalized (thus justified) but conflicts with $s_r$, we know that $s_r$ cannot be any of $s_{l + 1}, \ldots, s_{l + k}$ because that would require double-recognition (violating slashing condition S2, as shown earlier).
 
-Since $(B_r, s_r)$ is confirmed but conflicts with $(B_l, s_l)$ we know that there must exist a minimum conflicting recognized pair $(B_j, s_j)$ which conflicts with $(B_l, s_l)$ while minimizing $s_j$ and remaining recognized; this pair may be $(B_r, s_r)$ or an earlier pair. Furthermore, we know that there must exist a $(B_i, S_i)$ with $s_i < s_l$ ($s_i$ cannot equal $s_l$ or any later slot because of the double recognition situation discussed earlier which violates S2).
+Since $(B_r, s_r)$ is finalized but conflicts with $(B_l, s_l)$ we know that there must exist a minimum conflicting justified pair $(B_j, s_j)$ which conflicts with $(B_l, s_l)$ while minimizing $s_j$ and remaining justified; this pair may be $(B_r, s_r)$ or an earlier pair. Furthermore, we know that there must exist a $(B_i, S_i)$ with $s_i < s_l$ ($s_i$ cannot equal $s_l$ or any later slot because of the double recognition situation discussed earlier which violates S2).
 
 So we know that unless S2 is violated by $\geq\frac{1}{3}$ of weight that
 

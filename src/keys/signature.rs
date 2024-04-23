@@ -42,6 +42,10 @@ hexify!(Signature, "signature");
 impl Signature {
     const LEN: usize = 64;
 
+    pub const fn zero() -> Self {
+        Self([0u8; 64])
+    }
+
     pub fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)
     }

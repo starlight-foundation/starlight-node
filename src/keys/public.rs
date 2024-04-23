@@ -8,6 +8,8 @@ use crate::util::Error;
 use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
+use heed::bytemuck::Pod;
+use heed::bytemuck::Zeroable;
 use primitive_types::U512;
 use serde::Serialize;
 use serde::{Deserialize, Deserializer, Serializer};
@@ -16,6 +18,9 @@ use serde::{Deserialize, Deserializer, Serializer};
 #[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[repr(align(8))]
 pub struct Public([u8; 32]);
+
+unsafe impl Zeroable for Public {}
+unsafe impl Pod for Public {}
 
 hexify!(Public, "public key");
 

@@ -1,4 +1,4 @@
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
@@ -13,15 +13,24 @@ impl Slot {
     pub fn zero() -> Slot {
         Slot(0)
     }
-    pub fn now() -> Slot {
-        let now_ms = SystemTime::now()
+    pub fn to_system_time(self) -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_millis(GENESIS_TIME_MS + self.0 * SLOT_TIME_MS)
+    }
+    pub fn from_system_time(time: SystemTime) -> Slot {
+        let now_ms = time
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
-        Slot(now_ms.saturating_sub(GENESIS_TIME_MS) / SLOT_TIME_MS)
+        Slot((now_ms - GENESIS_TIME_MS) / SLOT_TIME_MS)
     }
-    pub fn previous(self) -> Self {
+    pub fn now() -> Slot {
+        Self::from_system_time(SystemTime::now())
+    }
+    pub fn prev(self) -> Self {
         Self(self.0.saturating_sub(1))
+    }
+    pub fn next(self) -> Self {
+        Self(self.0.saturating_add(1))
     }
     pub fn saturating_sub(self, other: Slot) -> u64 {
         self.0.saturating_sub(other.0)

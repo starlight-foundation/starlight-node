@@ -1,7 +1,9 @@
 mod archived;
 mod encoding;
 mod error;
+mod merkle;
 mod version;
+mod atomic;
 
 use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
 use serde::{de::DeserializeOwned, Serialize};
@@ -13,7 +15,9 @@ pub use encoding::{
     to_hex, to_hex_lower,
 };
 pub use error::Error;
+pub use merkle::{merkle_root, merkle_root_direct};
 pub use version::Version;
+pub use atomic::Atomic;
 
 #[macro_export]
 macro_rules! static_assert {

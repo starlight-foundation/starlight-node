@@ -18,7 +18,7 @@ pub struct Work(pub [u8; 8]);
 hexify!(Work, "work");
 
 #[static_init::dynamic]
-static PARAMS: Params = {
+static BLAKE2B_PARAMS: Params = {
     let mut params = Params::new();
     params.hash_length(8);
     params
@@ -38,7 +38,11 @@ impl Work {
     }
 
     pub fn hash(work_and_subject: &[u8]) -> [u8; Self::LEN] {
-        PARAMS.hash(work_and_subject).as_bytes().try_into().unwrap()
+        BLAKE2B_PARAMS
+            .hash(work_and_subject)
+            .as_bytes()
+            .try_into()
+            .unwrap()
     }
 
     /// Block and generate forever until we find a solution.

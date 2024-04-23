@@ -12,9 +12,10 @@ use crate::{
     keys::{Identity, Private, Public, Signature},
     protocol::{Amount, Slot, Transaction},
     util::{self, DefaultInitVec, Error, UninitVec, Version},
+    intercom::{Mailbox, Message, Process},
 };
 
-use super::{models::TelemetryMsg, CenterMap, Endpoint, Msg, Peer, Shred, ShredMsg};
+use super::{models::TelemetryNote, CenterMap, Endpoint, Note, Peer, Shred, ShredNote};
 
 const MTU: usize = 1280;
 const PEER_UPDATE_INTERVAL: u64 = 15;
@@ -33,51 +34,37 @@ fn fanout(n: usize) -> usize {
     }
 }
 
+
+pub struct NetworkConfig {
+    pub bind_ep: Endpoint,
+    pub visible_ep: Endpoint,
+    pub id: Identity,
+    pub initial_peers: Arc<Vec<Endpoint>>,
+    pub max_less: usize,
+    pub max_greater: usize,
+    pub get_weight: Box<dyn Fn(&Public) -> Amount>,
+    pub version: Version,
+    pub allow_peers_with_private_ip_addresses: bool,
+    pub allow_peers_with_node_external_ip_address: bool,
+}
+
 pub struct Network {
-    visible_ep: Endpoint,
-    id: Identity,
+    mailbox: Mailbox,
+    config: NetworkConfig,
     socket: Arc<UdpSocket>,
     peers: CenterMap<Public, Amount, Peer>,
-    initial_peers: Arc<Vec<Endpoint>>,
-    get_weight: Box<dyn Fn(&Public) -> Amount>,
-    transaction_tx: UnboundedSender<Box<Transaction>>,
-    shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
-    shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
-    version: Version,
-    allow_peers_with_private_ip_addresses: bool,
-    allow_peers_with_node_external_ip_address: bool,
+    leader_mode: bool
 }
 
 impl Network {
     // Create a new instance of the Network struct
-    pub async fn new(
-        bind_ep: Endpoint,
-        visible_ep: Endpoint,
-        id: Identity,
-        initial_peers: Arc<Vec<Endpoint>>,
-        max_less: usize,
-        max_greater: usize,
-        get_weight: Box<dyn Fn(&Public) -> Amount>,
-        transaction_tx: UnboundedSender<Box<Transaction>>,
-        shred_msg_tx: UnboundedSender<Box<ShredMsg>>,
-        shred_msg_rx: UnboundedReceiver<Box<ShredMsg>>,
-        version: Version,
-        allow_peers_with_private_ip_addresses: bool,
-        allow_peers_with_node_external_ip_address: bool,
-    ) -> Result<Self, Error> {
+    pub async fn new(config: NetworkConfig) -> Result<Self, Error> {
         Ok(Self {
-            visible_ep,
-            id,
-            socket: Arc::new(UdpSocket::bind(bind_ep.to_socket_addr()).await?),
-            peers: CenterMap::new(get_weight(&id.public), max_less, max_greater),
-            initial_peers,
-            get_weight,
-            transaction_tx,
-            shred_msg_tx,
-            shred_msg_rx,
-            version,
-            allow_peers_with_private_ip_addresses,
-            allow_peers_with_node_external_ip_address,
+            mailbox: Process::Network.take_mailbox().unwrap(),
+            peers: CenterMap::new((config.get_weight)(&config.id.public), config.max_less, config.max_greater),
+            socket: Arc::new(UdpSocket::bind(config.bind_ep.to_socket_addr()).await?),
+            config,
+            leader_mode: false
         })
     }
 
@@ -110,7 +97,7 @@ impl Network {
     // Broadcast a message to initial peers
     fn broadcast_initial_peers(&self, bytes: Arc<Vec<u8>>) {
         let socket = self.socket.clone();
-        let initial_peers = self.initial_peers.clone();
+        let initial_peers = self.config.initial_peers.clone();
         tokio::spawn(async move {
             for logical in initial_peers.iter() {
                 _ = socket.send_to(&bytes, logical.to_socket_addr()).await;
@@ -119,33 +106,37 @@ impl Network {
     }
 
     // Handle incoming telemetry messages
-    fn on_tel_msg(&mut self, tel_msg: Box<TelemetryMsg>) {
+    fn on_tel_note(&mut self, tel_note: Box<TelemetryNote>) {
+        // Filter out invalids
+        if tel_note.verify().is_err() {
+            return;
+        }
         // Don't accept telemetry from myself :)
-        if tel_msg.from == self.id.public {
+        if tel_note.from == self.config.id.public {
             return;
         }
         // Check if the telemetry message version is compatible
-        if !tel_msg.version.is_compatible(self.version) {
+        if !tel_note.version.is_compatible(self.config.version) {
             return;
         }
         // if we aren't allowed to contact private IPs
-        if !self.allow_peers_with_private_ip_addresses && !tel_msg.ep.is_external() {
+        if !self.config.allow_peers_with_private_ip_addresses && !tel_note.ep.is_external() {
             return;
         }
         // if we aren't allowed to communicate with our own IP
-        if !self.allow_peers_with_node_external_ip_address
-            && tel_msg.ep.addr == self.visible_ep.addr
+        if !self.config.allow_peers_with_node_external_ip_address
+            && tel_note.ep.addr == self.config.visible_ep.addr
         {
             return;
         }
 
         let now = Slot::now();
-        let should_broadcast = match self.peers.get_mut(&tel_msg.from) {
+        let should_broadcast = match self.peers.get_mut(&tel_note.from) {
             Some(peer) => {
                 // Update the peer's information if enough time has passed since the last update
                 if now.saturating_sub(peer.last_contact) >= PEER_UPDATE_INTERVAL {
-                    peer.version = tel_msg.version;
-                    peer.endpoint = tel_msg.ep;
+                    peer.version = tel_note.version;
+                    peer.endpoint = tel_note.ep;
                     peer.last_contact = now;
                     true
                 } else {
@@ -155,11 +146,11 @@ impl Network {
             None => {
                 // Insert a new peer if it doesn't exist
                 self.peers.insert(
-                    tel_msg.from,
+                    tel_note.from,
                     Peer {
-                        version: tel_msg.version,
-                        endpoint: tel_msg.ep,
-                        weight: (self.get_weight)(&tel_msg.from),
+                        version: tel_note.version,
+                        endpoint: tel_note.ep,
+                        weight: (self.config.get_weight)(&tel_note.from),
                         last_contact: now,
                     },
                 )
@@ -168,46 +159,25 @@ impl Network {
 
         // Broadcast the telemetry message to other peers if necessary
         if should_broadcast {
-            let msg = Msg::Tel(tel_msg);
+            let msg = Note::Tel(tel_note);
             let bytes = Arc::new(msg.serialize(MTU));
             self.broadcast_fanout(bytes);
-        }
-    }
-
-    // Handle incoming shred messages
-    fn on_shred_msg(&self, shred: Box<ShredMsg>) {
-        // Send the shred message to the shred message channel
-        _ = self.shred_msg_tx.send(shred);
-    }
-
-    // Handle incoming transactions
-    fn on_transaction(&self, tr: Box<Transaction>) {
-        // Send the transaction to the transaction channel
-        _ = self.transaction_tx.send(tr);
-    }
-
-    // Handle incoming messages
-    fn on_msg(&mut self, msg: Msg) {
-        match msg {
-            Msg::Tel(tel_msg) => self.on_tel_msg(tel_msg),
-            Msg::Shred(shred_msg) => self.on_shred_msg(shred_msg),
-            Msg::Transaction(tr) => self.on_transaction(tr),
         }
     }
 
     // Send telemetry messages at regular intervals
     fn on_interval(&mut self) {
         // Update my personal weight
-        self.peers.update_center((self.get_weight)(&self.id.public));
+        self.peers.update_center((self.config.get_weight)(&self.config.id.public));
 
         // Create a new telemetry message
-        let tel_msg = Box::new(TelemetryMsg::sign_new(
-            self.id.private,
+        let tel_note = Box::new(TelemetryNote::new(
+            self.config.id.private,
             Slot::now(),
-            self.visible_ep,
-            self.version,
+            self.config.visible_ep,
+            self.config.version,
         ));
-        let msg = Msg::Tel(tel_msg);
+        let msg = Note::Tel(tel_note);
         let bytes = Arc::new(msg.serialize(MTU));
 
         // Broadcast the telemetry message to initial peers or a subset of peers
@@ -218,20 +188,36 @@ impl Network {
         }
     }
 
-    // Handle incoming shred messages from the receiver
-    fn on_shred_rx(&mut self, shred_msg: Box<ShredMsg>) {
-        // Broadcast the shred message to a subset of peers
-        let bytes = Arc::new(Msg::Shred(shred_msg).serialize(MTU));
-        self.broadcast_fanout(bytes);
+    async fn on_msg(&mut self, msg: Message) {
+        match msg {
+            Message::TelemetryInterval => self.on_interval(),
+            Message::StartLeaderMode => self.leader_mode = true,
+            Message::EndLeaderMode => self.leader_mode = false,
+            // Shred notes from the network
+            Message::NewShredNote(shred_note) => {
+                // Send to the Restorer for reassembly
+                Process::Restorer.send(Message::NewShredNote(shred_note)).await;
+            },
+            // Shred notes sent back from `Restorer`
+            Message::PleaseBroadcast(shred_note) => {
+                // Broadcast the shred message to a subset of peers
+                let bytes = Arc::new(Note::Shred(shred_note).serialize(MTU));
+                self.broadcast_fanout(bytes);
+            },
+            Message::TelemetryNote(tel_note) => self.on_tel_note(tel_note),
+            // Only process transactions in leader mode
+            Message::Transaction(tx) if self.leader_mode => {
+                Process::TxPool.send(Message::Transaction(tx)).await;
+            },
+            _ => {}
+        }
     }
 
     // Run the network
     pub async fn run(mut self) -> Result<(), Error> {
-        let mut interval = tokio::time::interval(Duration::from_secs(PEER_UPDATE_INTERVAL));
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let socket = self.socket.clone();
 
-        // Spawn a task to receive messages from the socket
+        // Spawn a task to receive notes from the socket
         tokio::spawn(async move {
             let mut buf = Vec::default_init(MTU);
             loop {
@@ -245,26 +231,29 @@ impl Network {
                     },
                 };
                 let bytes = &buf[..n];
-                if let Ok(msg) = Msg::deserialize(bytes, MTU) {
-                    if msg.verify().is_ok() {
-                        tx.send(msg)?;
-                    }
+                if let Ok(note) = Note::deserialize(bytes, MTU) {
+                    let msg = match note {
+                        Note::Tel(tel_note) => Message::TelemetryNote(tel_note),
+                        Note::Shred(shred_note) => Message::NewShredNote(shred_note),
+                        Note::Transaction(tx) => Message::Transaction(tx)
+                    };
+                    Process::Network.send(msg).await;
                 }
             }
         });
 
-        loop {
-            tokio::select! {
-                // Handle interval ticks for sending telemetry messages
-                _ = interval.tick() => self.on_interval(),
-                // Handle incoming messages from the socket
-                msg = rx.recv() => self.on_msg(msg.ok_or(error!("socket crashed"))?),
-                // Handle incoming shred messages from the receiver
-                v_maybe = self.shred_msg_rx.recv() => {
-                    let shred_msg = v_maybe.ok_or(error!("shred_rx gone"))?;
-                    self.on_shred_rx(shred_msg);
-                }
+        // Spawn a task to send messages at an interval
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(PEER_UPDATE_INTERVAL));
+            loop {
+                Process::Network.send(Message::TelemetryInterval).await;
+                interval.tick().await;
             }
+        });
+
+        loop {
+            let msg = self.mailbox.recv().await;
+            self.on_msg(msg).await;
         }
     }
 }

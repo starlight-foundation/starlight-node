@@ -1,10 +1,4 @@
-mod app;
-mod keys;
-mod network;
-mod node;
-mod protocol;
-mod rpc;
-mod util;
+use starlight_node::app;
 
 fn main() {
     tokio::runtime::Builder::new_multi_thread()

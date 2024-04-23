@@ -1,0 +1,17 @@
+# Node Architecture 
+The Starlight node architecture consists of several components, called processes, that work together to enable the functioning of the Starlight blockchain network. These processes communicate with each other using Tokio channels for efficient message passing. They are:
+
+1. `Scheduler`: The `Scheduler` process manages the timing of operations in the Starlight network by controlling when the node switches between different modes based on a schedule. Starlight divides time into slots, and each slot has a designated leader node responsible for creating new blocks. The `Scheduler`'s main job is to track this leader schedule and tell the node when to enter and exit leader mode. When in leader mode, the node creates new blocks. The `Scheduler` sends three important messages to all other processes in the system:
+- **Start of Leader Mode**: Sent at the start of the slot before the node's first leader slot, telling the node to start accepting transactions from the network. 
+- **End of Leader Mode**: Sent at the end of the node's last leader slot, telling the node to stop accepting transactions.
+- **New Leader Slot**: Sent at the start of each of the node's leader slots, triggering the node to process queued transactions, create a new block, and send it out to the network.
+
+2. `Network`: This process manages communications with other nodes in the Starlight network. In leader mode, where the node is responsible for generating new blocks, the `Network` accepts transactions from external nodes and passes them to the `Mempool` for initial processing. In non-leader mode, it handles only fragments of blocks, known as block shreds, which it forwards to the `Restorer` for reassembly.
+
+3. `TxPool`: Active only during leader mode, the `TxPool` process performs initial validation on incoming transactions and maintains a priority queue of transactions based on their Proof-of-Work (PoW) difficulty. When it's time to create a new block, the `TxPool` sends the prioritized transactions to the `Bank` process for further validation and inclusion in the block.
+
+4. `Restorer`: This process receives block shreds from the `Network`. If a shred is new, the `Restorer` sends it back to the `Network` to be rebroadcast, ensuring it reaches the entire network. The `Restorer` then assembles these shreds into complete blocks and sends them to the `Chain` for further action.
+
+5. `Bank`: The `Bank` maintains the current state of the Starlight network and has the sole authority to process and finalize transactions. In leader mode, it receives transactions from the `Mempool`, weeds out any that are invalid, and passes the valid ones to the `Chain` for inclusion in the new block and subsequent broadcast. In non-leader mode, the `Bank` processes, reverts, or finalizes blocks based on instructions from the `Chain`.
+
+6. `Chain`: This process oversees the blockchain's structure, maintaining a directed tree of pending blocks and a record of finalized blocks. The `Chain` ensures that the state maintained by the `Bank` matches the longest sequence of blocks starting from the most recently finalized block. It is essential for preserving the blockchain's integrity and consistency.

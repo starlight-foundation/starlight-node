@@ -22,32 +22,35 @@ impl CenterMapValue<Amount> for Peer {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TelemetryMsg {
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct TelemetryNote {
     pub from: Public,
     pub signature: Signature,
     pub slot: Slot,
     pub ep: Endpoint,
     pub version: Version,
 }
-impl TelemetryMsg {
-    fn hash_pieces(slot: Slot, logical: Endpoint, version: Version) -> Hash {
+impl TelemetryNote {
+    fn hash_pieces(slot: Slot, ep: Endpoint, version: Version) -> Hash {
         let mut buf = [0u8; 20];
         buf[0..8].copy_from_slice(&slot.to_bytes());
-        buf[8..14].copy_from_slice(&logical.to_bytes());
+        buf[8..14].copy_from_slice(&ep.to_bytes());
         buf[14..20].copy_from_slice(&version.to_bytes());
         Hash::digest(&buf)
     }
-    pub fn sign_new(private: Private, slot: Slot, ep: Endpoint, version: Version) -> Self {
-        let hash = Self::hash_pieces(slot, ep, version);
-        let signature = private.sign(&hash);
-        Self {
+    pub fn new(private: Private, slot: Slot, ep: Endpoint, version: Version) -> Self {
+        let mut tel_note = Self {
             from: private.to_public(),
-            signature,
+            signature: Signature::zero(),
             slot,
             ep,
             version,
-        }
+        };
+        let bytes = util::view_as_bytes(&tel_note);
+        let hash = Hash::digest(&bytes[96..]);
+        let signature = private.sign(&hash);
+        tel_note.signature = signature;
+        tel_note
     }
     pub fn hash(&self) -> Hash {
         Self::hash_pieces(self.slot, self.ep, self.version)
@@ -59,13 +62,13 @@ impl TelemetryMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ShredMsg {
+pub struct ShredNote {
     pub from: Public,
     pub signature: Signature,
     pub slot: Slot,
     pub shred: Shred,
 }
-impl ShredMsg {
+impl ShredNote {
     pub fn hash(&self) -> Hash {
         let mut hb = HashBuilder::new();
         hb.update(&self.slot.to_bytes());
@@ -81,12 +84,12 @@ impl ShredMsg {
 const MAGIC_NUMBER: [u8; 8] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa, 0xe6];
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum Msg {
-    Tel(Box<TelemetryMsg>),
-    Shred(Box<ShredMsg>),
+pub enum Note {
+    Tel(Box<TelemetryNote>),
+    Shred(Box<ShredNote>),
     Transaction(Box<Transaction>),
 }
-impl Msg {
+impl Note {
     pub fn serialize(&self, mtu: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(mtu);
         bytes.extend_from_slice(&MAGIC_NUMBER);
@@ -106,12 +109,5 @@ impl Msg {
         util::deserialize(&bytes[8..]).or_else(|_| {
             return Err(error!("invalid message"));
         })
-    }
-    pub fn verify(&self) -> Result<(), Error> {
-        match self {
-            Msg::Tel(t) => t.verify(),
-            Msg::Shred(s) => s.verify(),
-            Msg::Transaction(t) => t.verify_and_hash().map(|_| ()),
-        }
     }
 }

@@ -1,17 +1,23 @@
 mod amount;
+mod clock;
 mod epoch;
 mod leader_schedule;
 mod pair;
 mod slot;
 mod transaction;
-mod transaction_kind;
+mod open;
 mod vote;
+mod task;
+mod verified;
 
 pub use amount::Amount;
+pub use clock::Clock;
 pub use epoch::Epoch;
 pub use leader_schedule::LeaderSchedule;
 pub use pair::Pair;
 pub use slot::Slot;
 pub use transaction::Transaction;
-pub use transaction_kind::TransactionKind;
+pub use open::Open;
 pub use vote::Vote;
+pub use task::Task;
+pub use verified::{Verifiable, Verified};

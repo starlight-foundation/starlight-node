@@ -3,7 +3,12 @@ name = "starlight-node"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "starlight-node"
+path = "src/main.rs"
 
 [dependencies]
 bitvec = "1.0.1"
@@ -12,7 +17,6 @@ rand = "0.8.5"
 ed25519-dalek-blake2-feeless = "1.0.1"
 primitive-types = "0.12.2"
 hex = "0.4.3"
-leapfrog = { version = "0.3.0", features = ["stable_alloc"] }
 bincode = "1.3.3"
 priority-queue = "2.0.2"
 hyper = { version = "1.2.0", features = ["server", "http1"] }
@@ -30,3 +34,12 @@ chrono = "0.4.35"
 rand_chacha = "0.3.1"
 topk = "0.5.0"
 blake3 = "1.5.1"
+heed = { version = "0.11.0", features = ["lmdb", "lmdb-rkv-sys"], default-features = false }
+memmap2 = "0.9.4"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "hashing"
+harness = false

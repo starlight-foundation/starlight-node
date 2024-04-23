@@ -2,7 +2,7 @@ mod config;
 #[macro_use]
 mod log;
 
-use crate::network::{Endpoint, Network};
+use crate::network::{Endpoint, Network, NetworkConfig};
 use crate::protocol::Amount;
 use crate::rpc::Rpc;
 use crate::{
@@ -62,23 +62,18 @@ pub async fn start() {
     });
     log_info!("RPC listening on http://{}", config.rpc_endpoint);
     let id = Identity { private, public };
-    let (shred_msg_tx, shred_msg_rx) = mpsc::unbounded_channel();
-    let (transaction_tx, _) = mpsc::unbounded_channel();
-    let network = Network::new(
-        config.node_bind_endpoint,
-        config.node_external_endpoint,
+    let network = Network::new(NetworkConfig {
+        bind_ep: config.node_bind_endpoint,
+        visible_ep: config.node_external_endpoint,
         id,
-        Arc::new(config.initial_peers),
-        config.max_less_peers,
-        config.max_greater_peers,
-        Box::new(|_| Amount::from_raw(1)),
-        transaction_tx,
-        shred_msg_tx,
-        shred_msg_rx,
-        VERSION,
-        config.allow_peers_with_private_ip_addresses,
-        config.allow_peers_with_node_external_ip_address,
-    )
+        initial_peers: Arc::new(config.initial_peers),
+        max_less: config.max_less_peers,
+        max_greater: config.max_greater_peers,
+        get_weight: Box::new(|_| Amount::from_raw(1)),
+        version: VERSION,
+        allow_peers_with_private_ip_addresses: config.allow_peers_with_private_ip_addresses,
+        allow_peers_with_node_external_ip_address: config.allow_peers_with_node_external_ip_address,
+    })
     .await
     .unwrap();
     log_info!("SLP listening on udp://{}", config.node_bind_endpoint);

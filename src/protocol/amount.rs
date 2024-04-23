@@ -3,10 +3,22 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
+use crate::util::ArchivableTo;
+
 const RAW_PER_UNIT: u64 = 10_000_000_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Amount(u64);
+
+impl ArchivableTo<u64> for Amount {
+    fn archive(self) -> u64 {
+        self.0
+    }
+
+    fn unarchive(source: u64) -> Self {
+        Self(source)
+    }
+}
 
 impl Amount {
     pub const fn zero() -> Self {
