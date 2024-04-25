@@ -12,8 +12,7 @@ pub enum Message {
     TransactionList(Box<(Slot, Vec<Box<Verified<Transaction>>>)>),
 
     // Shred note messages
-    NewShredNote(Box<ShredNote>),
-    PleaseBroadcast(Box<ShredNote>),
+    ShredNote(Box<ShredNote>),
 
     // Telemetry messages
     TelemetryNote(Box<TelemetryNote>),

@@ -1,8 +1,9 @@
 mod config;
 #[macro_use]
-mod log;
+pub mod log;
 
-use crate::network::{Endpoint, Network, NetworkConfig};
+use crate::network::{Endpoint, Transmitter, Receiver};
+use crate::process;
 use crate::protocol::Amount;
 use crate::rpc::Rpc;
 use crate::{
@@ -11,6 +12,7 @@ use crate::{
 };
 use config::Config;
 use serde::{Deserialize, Serialize};
+use tokio::net::UdpSocket;
 use std::sync::Arc;
 use std::{
     fs::{self, File},
@@ -62,20 +64,28 @@ pub async fn start() {
     });
     log_info!("RPC listening on http://{}", config.rpc_endpoint);
     let id = Identity { private, public };
-    let network = Network::new(NetworkConfig {
-        bind_ep: config.node_bind_endpoint,
-        visible_ep: config.node_external_endpoint,
+    let socket = match UdpSocket::bind(
+        config.node_bind_endpoint.to_socket_addr()
+    ).await {
+        Ok(socket) => socket,
+        Err(e) => {
+            log_error!("Failed to bind to {}: {}", config.node_bind_endpoint, e);
+            std::process::exit(1);
+        }
+    };
+    let socket = Arc::new(socket);
+    let transmitter = process::spawn(Transmitter::new(
+        socket,
+        config.node_external_endpoint,
         id,
-        initial_peers: Arc::new(config.initial_peers),
-        max_less: config.max_less_peers,
-        max_greater: config.max_greater_peers,
-        get_weight: Box::new(|_| Amount::from_raw(1)),
-        version: VERSION,
-        allow_peers_with_private_ip_addresses: config.allow_peers_with_private_ip_addresses,
-        allow_peers_with_node_external_ip_address: config.allow_peers_with_node_external_ip_address,
-    })
-    .await
-    .unwrap();
+        Arc::new(config.initial_peers),
+        config.max_less_peers,
+        config.max_greater_peers,
+        Box::new(|_| Amount::from_raw(1)),
+        VERSION,
+        config.allow_peers_with_private_ip_addresses,
+        config.allow_peers_with_node_external_ip_address,
+    ));
     log_info!("SLP listening on udp://{}", config.node_bind_endpoint);
     log_info!(
         "SLP external endpoint is udp://{}",
@@ -84,5 +94,4 @@ pub async fn start() {
     if config.node_external_endpoint.addr == [127, 0, 0, 1] {
         log_warn!("SLP external endpoint is localhost; this node will not be able to communicate over the Internet");
     }
-    network.run().await.unwrap();
 }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error,
     keys::{Hash, HashBuilder, Private, Public, Signature},
-    protocol::{Amount, Slot, Transaction},
+    protocol::{Amount, Open, Slot, Transaction},
     util::{self, Error, Version},
 };
 
@@ -88,6 +88,7 @@ pub enum Note {
     Tel(Box<TelemetryNote>),
     Shred(Box<ShredNote>),
     Transaction(Box<Transaction>),
+    Open(Box<Open>)
 }
 impl Note {
     pub fn serialize(&self, mtu: usize) -> Vec<u8> {

@@ -6,5 +6,5 @@ pub mod protocol;
 pub mod rpc;
 pub mod util;
 pub mod storage;
-pub mod intercom;
+pub mod process;
 pub mod waiting;

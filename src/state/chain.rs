@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{error, intercom::{Mailbox, Message, Process}, keys::Hash, protocol::{Amount, Open, Slot, Transaction}, util::Error};
+use crate::{error, process::{Mailbox, Message, Process}, keys::Hash, protocol::{Amount, Open, Slot, Transaction, Verified}, util::Error};
 
 use super::{Bank, Block, Dag};
 
@@ -18,9 +18,9 @@ pub struct Chain {
     /// The slot of the block-in-construction
     cur_slot: Option<Slot>,
     /// The transactions of the block-in-construction
-    cur_txs: Option<Vec<Box<Transaction>>>,
+    cur_txs: Option<Vec<Box<Verified<Transaction>>>>,
     /// The opens of the block-in-construction
-    cur_opens: Option<Vec<Box<Open>>>
+    cur_opens: Option<Vec<Box<Verified<Open>>>>
 }
 
 impl Chain {

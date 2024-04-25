@@ -1,5 +1,5 @@
 use std::hash::{Hash, Hasher};
-use crate::{intercom::{Mailbox, Message, Process}, protocol::{Open, Verified}};
+use crate::{process::{Mailbox, Message, Process}, protocol::{Open, Verified}};
 use super::Mempool;
 
 struct Entry(Box<Verified<Open>>);

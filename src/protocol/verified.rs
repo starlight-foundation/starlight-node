@@ -5,6 +5,7 @@ pub trait Verifiable {
     fn verify_and_hash(&self) -> Result<Hash, Error>;
 }
 
+#[derive(Clone)]
 pub struct Verified<T: Verifiable> {
     pub val: T,
     pub hash: Hash

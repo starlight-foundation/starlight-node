@@ -2,7 +2,8 @@ mod center_map;
 mod compress;
 mod endpoint;
 mod models;
-mod network;
+mod transmitter;
+mod receiver;
 mod shred;
 
 use center_map::{CenterMap, CenterMapValue};
@@ -11,6 +12,7 @@ use models::{Peer, Note};
 use shred::Shred;
 
 pub use endpoint::Endpoint;
-pub use network::{Network, NetworkConfig};
+pub use transmitter::{Transmitter, MTU};
+pub use receiver::Receiver;
 pub use models::{ShredNote, TelemetryNote};
 
