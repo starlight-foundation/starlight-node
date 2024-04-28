@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// - Funds equal to `amount` are transferred from `from` to `to`.
 /// Else:
 /// - The representative of `from` is changed to `to`.
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Transaction {
     pub nonce: u64,

@@ -1,6 +1,7 @@
 use super::Amount;
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct Task {
     pub nonce: u64,
     pub from_index: u64,

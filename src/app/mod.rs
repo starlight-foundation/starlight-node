@@ -2,10 +2,12 @@ mod config;
 #[macro_use]
 pub mod log;
 
-use crate::network::{Endpoint, Transmitter, Receiver};
+use crate::network::{Assembler, Endpoint, Receiver, Transmitter};
 use crate::process;
 use crate::protocol::Amount;
 use crate::rpc::Rpc;
+use crate::state::{Block, State};
+use crate::waiting::{OpenPool, TxPool};
 use crate::{
     keys::{Identity, Private, Seed},
     util::{Error, Version},
@@ -16,10 +18,8 @@ use tokio::net::UdpSocket;
 use std::sync::Arc;
 use std::{
     fs::{self, File},
-    io::Write,
-    str::FromStr,
+    io::Write
 };
-use tokio::sync::mpsc;
 
 const VERSION: Version = Version::new(0, 1, 0);
 const CONFIG_FILE: &str = "config.toml";
@@ -75,7 +75,7 @@ pub async fn start() {
     };
     let socket = Arc::new(socket);
     let transmitter = process::spawn(Transmitter::new(
-        socket,
+        socket.clone(),
         config.node_external_endpoint,
         id,
         Arc::new(config.initial_peers),
@@ -85,6 +85,28 @@ pub async fn start() {
         VERSION,
         config.allow_peers_with_private_ip_addresses,
         config.allow_peers_with_node_external_ip_address,
+    ));
+    let genesis = Block::genesis(private);
+    let state = match State::new(
+        &config.data_dir,
+        Arc::new(genesis)
+    ) {
+        Ok(state) => state,
+        Err(e) => {
+            log_error!("Failed to create state: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let state = process::spawn(state);
+    let tx_pool = process::spawn(TxPool::new(config.tx_pool_size, state.clone()));
+    let open_pool = process::spawn(OpenPool::new(config.open_pool_size, state));
+    let assembler = process::spawn(Assembler::new());
+    process::spawn(Receiver::new(
+        socket,
+        transmitter,
+        assembler,
+        tx_pool,
+        open_pool
     ));
     log_info!("SLP listening on udp://{}", config.node_bind_endpoint);
     log_info!(

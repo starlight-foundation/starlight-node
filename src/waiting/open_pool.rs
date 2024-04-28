@@ -1,5 +1,5 @@
 use std::hash::{Hash, Hasher};
-use crate::{process::{Mailbox, Message, Process}, protocol::{Open, Verified}};
+use crate::{process::{Handle, Mailbox, Message, Process}, protocol::{Open, Verified}, util::Error};
 use super::Mempool;
 
 struct Entry(Box<Verified<Open>>);
@@ -16,22 +16,31 @@ impl Hash for Entry {
 }
 
 pub struct OpenPool {
-    mailbox: Mailbox,
-    leader_mode: bool,
-    pool: Mempool<Entry>
+    pool: Mempool<Entry>,
+    state: Handle,
+    leader_mode: bool
 }
 
 impl OpenPool {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, state: Handle) -> Self {
         Self {
-            mailbox: Process::OpenPool.take_mailbox().unwrap(),
-            leader_mode: false,
-            pool: Mempool::new(size)
+            pool: Mempool::new(size),
+            state,
+            leader_mode: false
         }
     }
-    pub async fn run(mut self) {
+}
+
+impl Process for OpenPool {
+    const NAME: &'static str = "OpenPool";
+    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
         loop {
-            match self.mailbox.recv().await {
+            match mailbox.recv().await {
+                Message::StartLeaderMode => self.leader_mode = true,
+                Message::EndLeaderMode => {
+                    self.pool.clear();
+                    self.leader_mode = false;
+                },
                 Message::Open(open) => {
                     let open_verified = match Verified::new(*open) {
                         Ok(verified) => verified,
@@ -42,7 +51,7 @@ impl OpenPool {
                 },
                 Message::NewLeaderSlot(slot) => {
                     let opens = self.pool.drain(|x| x.0);
-                    Process::Chain.send(Message::OpenList(Box::new((slot, opens))));
+                    self.state.send(Message::OpenList(Box::new((slot, opens)))).await;
                 },
                 _ => {}
             }

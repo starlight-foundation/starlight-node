@@ -1,7 +1,7 @@
 use crate::{
     error,
-    keys::{Hash, Private, Public, Signature},
-    protocol::{Open, Slot, Transaction, Vote},
+    keys::{Hash, Identity, Private, Public, Signature},
+    protocol::{Open, Slot, Transaction, Verifiable, Vote},
     util::{self, Error},
 };
 
@@ -44,7 +44,7 @@ fn hash_block(
 
 impl Block {
     pub fn sign(
-        private: Private,
+        id: Identity,
         slot: Slot,
         previous: Hash,
         opens: Vec<Open>,
@@ -53,19 +53,10 @@ impl Block {
         tx_hashes: Vec<Hash>,
         votes: Vec<Vote>,
         vote_hashes: Vec<Hash>,
-    ) -> Result<Self, Error> {
-        let opens_hash = util::merkle_root(
-            &opens,
-            |open| open.verify_and_hash(),
-        )?;
-        let transactions_hash = util::merkle_root(
-            &transactions,
-            |tr| tr.verify_and_hash(),
-        )?;
-        let vote_hash = util::merkle_root(
-            &votes,
-            |vote| vote.verify_and_hash(),
-        )?;
+    ) -> Self {
+        let opens_hash = util::merkle_root_direct(open_hashes);
+        let transactions_hash = util::merkle_root_direct(tx_hashes);
+        let vote_hash = util::merkle_root_direct(vote_hashes);
         let hash = hash_block(
             slot,
             &previous,
@@ -73,9 +64,20 @@ impl Block {
             &transactions_hash,
             &vote_hash,
         );
-        let signature = private.sign(&hash);
+        let signature = id.private.sign(&hash);
+        Self {
+            leader: id.public,
+            signature,
+            slot,
+            previous,
+            hash,
+            state_hash: Hash::zero(),
+            opens,
+            transactions,
+            votes,
+        }
     }
-    pub fn genesis(private: Private) -> Self {
+    pub fn genesis(id: Identity) -> Self {
         let zero_hash = Hash::zero();
         let hash = hash_block(
             Slot::zero(),
@@ -84,9 +86,9 @@ impl Block {
             &zero_hash,
             &zero_hash,
         );
-        let signature = private.sign(&hash);
+        let signature = id.private.sign(&hash);
         Self {
-            leader: private.to_public(),
+            leader: id.public,
             signature,
             slot: Slot::zero(),
             previous: zero_hash,

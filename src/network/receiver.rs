@@ -16,20 +16,20 @@ pub struct Receiver {
 
 impl Receiver {
     // Create a new instance of the Receiver struct
-    pub async fn new(
+    pub fn new(
         socket: Arc<UdpSocket>, 
         transmitter: Handle,
         assembler: Handle,
         tx_pool: Handle,
         open_pool: Handle,
-    ) -> Result<Self, Error> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             socket,
             transmitter,
             assembler,
             tx_pool,
             open_pool,
-        })
+        }
     }
 }
 
@@ -57,10 +57,10 @@ impl Process for Receiver {
                 Err(e) => continue
             };
             match note {
-                Note::Tel(tel_note) => {
+                Note::TelemetryNote(tel_note) => {
                     self.transmitter.send(Message::TelemetryNote(tel_note)).await;
                 }
-                Note::Shred(shred_note) => {
+                Note::ShredNote(shred_note) => {
                     self.assembler.send(Message::ShredNote(shred_note)).await;
                 }
                 Note::Transaction(tx) => {

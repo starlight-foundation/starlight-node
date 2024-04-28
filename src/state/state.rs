@@ -1,20 +1,28 @@
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
-use crate::{error, process::{Mailbox, Message, Process}, keys::Hash, protocol::{Amount, Open, Slot, Transaction, Verified}, util::Error};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tokio::sync::oneshot;
+
+use crate::{error, keys::{Hash, Identity, Private}, process::{Handle, Mailbox, Message, Process}, protocol::{Amount, Open, Slot, Task, Transaction, Verified}, util::Error};
 
 use super::{Bank, Block, Dag};
 
-pub struct Chain {
-    /// This process's mailbox
-    mailbox: Mailbox,
+struct BlockEntry {
+    block: Arc<Block>,
+    tasks: Vec<Task>
+}
+
+pub struct State {
+    /// My identity
+    id: Identity,
     /// Are we in leader mode?
     leader_mode: bool,
     /// The account state of the longest chain
-    bank: Bank,
+    bank: Arc<Mutex<Bank>>,
     /// All finalized blocks
-    finalized: Vec<Rc<Block>>,
+    finalized: Vec<Arc<Block>>,
     /// Last finalized block (root) plus all blocks that are not yet finalized
-    active: Dag<Hash, Rc<Block>>,
+    active: Dag<Hash, Box<BlockEntry>>,
     /// The slot of the block-in-construction
     cur_slot: Option<Slot>,
     /// The transactions of the block-in-construction
@@ -23,16 +31,19 @@ pub struct Chain {
     cur_opens: Option<Vec<Box<Verified<Open>>>>
 }
 
-impl Chain {
-    pub fn new(data_dir: &str, genesis_block: Rc<Block>) -> Result<Self, Error> {
+impl State {
+    pub fn new(identity: Identity, data_dir: &str, genesis_block: Arc<Block>) -> Result<Self, Error> {
         if !genesis_block.is_genesis() {
             return Err(error!("invalid genesis block"));
         }
         Ok(Self {
-            mailbox: Process::Chain.take_mailbox().unwrap(),
+            id: identity,
             leader_mode: false,
-            active: Dag::new(genesis_block.hash, genesis_block.clone()),
-            bank: Bank::open(data_dir, genesis_block.leader)?,
+            active: Dag::new(genesis_block.hash, Box::new(BlockEntry {
+                block: genesis_block.clone(),
+                tasks: vec![],
+            })),
+            bank: Arc::new(Bank::open(data_dir, genesis_block.leader)?),
             finalized: vec![genesis_block],
             cur_slot: None,
             cur_txs: None,
@@ -105,12 +116,15 @@ impl Chain {
         }
         Ok(())
     }
-    pub fn add_block(&mut self, block: Rc<Block>) -> Result<(), Error> {
+    pub fn add_block(&mut self, block: Arc<Block>, tasks: Vec<Task>) -> Result<(), Error> {
         let previous = block.previous;
         let hash = block.hash;
         let (&prev_longest_chain, _) = self.active.get_longest_chain();
         let building_on_longest_chain = prev_longest_chain == previous;
-        self.active.insert(hash, block, previous)?;
+        self.active.insert(hash, Box::new(BlockEntry {
+            block: block.clone(),
+            tasks: tasks
+        }), previous)?;
         let added_block_is_longest_chain = self.active.get_longest_chain().0 == &hash;
         if building_on_longest_chain {
             // easy! we're building on a new longest chain -- just process the block and we're done!
@@ -187,46 +201,75 @@ impl Chain {
 
         Ok(())
     }
-    pub fn try_create_block(&mut self) -> Option<()> {
-        let slot = self.cur_slot?;
-        let opens_queued = self.cur_opens.take()?;
-        let txs_queued = self.cur_txs.take()?;
+    pub async fn try_create_block(&mut self) -> Result<(), ()> {
+        let slot = self.cur_slot.ok_or(())?;
+        let opens_queued = self.cur_opens.take().ok_or(())?;
+        let txs_queued = self.cur_txs.take().ok_or(())?;
         
-        let batch = self.bank.new_batch();
+        let mut bank = self.bank.lock().unwrap();
+        let batch = bank.new_batch();
         
         // Process + extract all the valid opens
         let mut opens = Vec::with_capacity(opens_queued.len());
+        let mut open_hashes = Vec::with_capacity(opens_queued.len());
         for open in opens_queued.iter() {
-            if self.bank.process_open(open, batch).is_ok() {
-                opens.push(open);
+            if bank.process_open(&open.val, batch).is_ok() {
+                opens.push(open.val);
+                open_hashes.push(open.hash);
             }
         }
 
+        drop(bank);
+
         // Process and extract all the valid transactions
-        // TODO: parallelize
-        let mut txs = Vec::with_capacity(txs_queued.len());
-        let mut tasks = Vec::with_capacity(txs_queued.len());
-        for tx in txs.iter() {
-            let task = match self.bank.process_transaction(tx) {
-                Ok(task) => task,
-                _ => continue
-            };
-            if self.bank.queue_task(&task, batch).is_ok() {
-                tasks.push(task);
-                txs.push(*tx);
-            }
-        }
-        for task in tasks {
-            self.bank.finish_task(&task);
-        }
+        let (send, recv) = oneshot::channel();
+        let bank = self.bank.clone();
+        rayon::spawn(move || {
+            let bank = bank.lock().unwrap();
+            let ((txs, tx_hashes), tasks): ((Vec<Transaction>, Vec<Hash>), Vec<Task>) = txs_queued
+                .par_iter()
+                .filter_map(|tx| -> Option<((Transaction, Hash), Task)>{
+                    let task = bank.convert_transaction(&tx.val).ok()?;
+                    bank.queue_task(&task, batch).ok()?;
+                    Some(((tx.val, tx.hash), task))
+                })
+                .unzip();
+            send.send((txs, tx_hashes, tasks)).unwrap();
+        });
+        let (txs, tx_hashes, tasks) = recv.await.unwrap();
+        let (send, recv) = oneshot::channel();
+        let bank = self.bank.clone();
+        rayon::spawn(move || {
+            let bank = bank.lock().unwrap();
+            tasks.par_iter().for_each(|task| {
+                bank.finish_task(task);
+            });
+            send.send(tasks).unwrap();
+        });
+        let tasks = recv.await.unwrap();
         
         // Create our block
-        let block = Block::
-        Some(())
+        let block = Block::sign(
+            self.id,
+            slot,
+            *self.active.get_longest_chain().0,
+            opens,
+            open_hashes,
+            txs,
+            tx_hashes,
+            vec![],
+            vec![]
+        );
+        self.add_block(Arc::new(block), tasks);
+        Ok(())
     }
-    pub async fn run(&mut self) {
+}
+
+impl Process for State {
+    const NAME: &'static str = "State";
+    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
         loop {
-            let msg = self.mailbox.recv().await;
+            let msg = mailbox.recv().await;
             match msg {
                 Message::TransactionList(v) => {
                     let (slot, txs) = *v;

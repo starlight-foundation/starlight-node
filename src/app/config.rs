@@ -35,6 +35,9 @@ pub struct Config {
     pub max_greater_peers: usize,
     pub allow_peers_with_private_ip_addresses: bool,
     pub allow_peers_with_node_external_ip_address: bool,
+    pub tx_pool_size: usize,
+    pub open_pool_size: usize,
+    pub data_dir: String
 }
 
 impl Config {
@@ -49,6 +52,9 @@ impl Config {
             max_greater_peers: 250,
             allow_peers_with_private_ip_addresses: false,
             allow_peers_with_node_external_ip_address: false,
+            tx_pool_size: 50_000,
+            open_pool_size: 25,
+            data_dir: "./data".to_string()
         }
     }
 }

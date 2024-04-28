@@ -10,6 +10,7 @@ use crate::{
 use super::{center_map::CenterMapValue, endpoint::Endpoint, shred::Shred};
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
+#[repr(C)]
 pub struct Peer {
     pub weight: Amount,
     pub last_contact: Slot,
@@ -23,6 +24,7 @@ impl CenterMapValue<Amount> for Peer {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
+#[repr(C)]
 pub struct TelemetryNote {
     pub from: Public,
     pub signature: Signature,
@@ -62,6 +64,7 @@ impl TelemetryNote {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[repr(C)]
 pub struct ShredNote {
     pub from: Public,
     pub signature: Signature,
@@ -81,12 +84,12 @@ impl ShredNote {
     }
 }
 
-const MAGIC_NUMBER: [u8; 8] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa, 0xe6];
+const MAGIC_NUMBER: [u8; 7] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa];
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Note {
-    Tel(Box<TelemetryNote>),
-    Shred(Box<ShredNote>),
+    TelemetryNote(Box<TelemetryNote>),
+    ShredNote(Box<ShredNote>),
     Transaction(Box<Transaction>),
     Open(Box<Open>)
 }

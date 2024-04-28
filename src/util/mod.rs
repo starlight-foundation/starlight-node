@@ -6,6 +6,8 @@ mod version;
 mod atomic;
 
 use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
+use heed::bytemuck::Pod;
+use rayon::iter::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub use archived::{ArchivableTo, Archived};
@@ -72,4 +74,21 @@ impl<T: BitStore, O: BitOrder> UninitBitVec<T, O> for BitVec<T, O> {}
 
 pub const fn view_as_bytes<T: Copy>(value: &T) -> &[u8] {
     unsafe { std::slice::from_raw_parts(value as *const T as *const u8, std::mem::size_of::<T>()) }
+}
+
+pub const unsafe fn view_as_value<T: Copy>(bytes: &[u8]) -> Result<&T, ()> {
+    if bytes.len() != std::mem::size_of::<T>() {
+        return Err(());
+    }
+    return Ok(unsafe {
+        &*(bytes.as_ptr() as *const T)
+    })
+}
+
+pub fn parallel_map<T, F: Fn(&T) -> U, U>(x: Vec<T>, f: F) -> Vec<U> {
+    let mut y = Vec::with_capacity(x.len());
+    for i in 0..x.len() {
+        y.push(f(x[i]));
+    }
+    y
 }

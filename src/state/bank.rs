@@ -86,13 +86,13 @@ impl Bank {
     }
 
     /// Revert an `Open` transaction
-    pub fn revert_open(&self, tx: &Transaction) {
-        self.index_db.remove(&tx.from);
+    pub fn revert_open(&mut self, open: &Open) {
+        self.index_db.remove(&open.account);
         self.account_list.pop();
     }
 
-    /// Process a `transaction` into a `Task`
-    pub fn process_transaction(&self, tx: &Transaction) -> Result<Task, ()> {
+    /// Convert a `Transaction` into a `Task`
+    pub fn convert_transaction(&self, tx: &Transaction) -> Result<Task, ()> {
         Ok(Task {
             nonce: tx.nonce,
             from_index: self.index_db.get(&tx.from).ok_or(())?,
@@ -152,7 +152,7 @@ impl Bank {
         }
     }
 
-    // Finalize a task
+    /// Finalize a task
     pub fn finalize_task(&self, task: &Task) {
         if !task.is_change_representative() {
             let from_account = self.account_list.get(task.from_index).unwrap();
@@ -186,28 +186,5 @@ impl Bank {
             // Add the finalized balance to the new representative's weight
             to_rep_account.weight.fetch_add(finalized_balance, Ordering::Relaxed);
         }
-    }
-
-    // Process a block of transactions outright, queuing and finishing them in a new batch
-    pub fn process_block(&mut self, block: &Block) -> Result<(), ()> {
-        // Generate a new batch ID
-        let batch = self.new_batch();
-        // Process each open request one-by-one
-        for open in block.opens.iter() {
-            self.process_open(open, batch)?;
-        }
-        // Convert all transactions to tasks in parallel,
-        // queuing them as we go
-        let mut tasks = Vec::with_capacity(block.transactions.len());
-        for tx in block.transactions.iter() {
-            let task = self.process_transaction(tx)?;
-            self.queue_task(&task, batch)?;
-            tasks.push(task);
-        }
-        // Finish all tasks in parallel
-        for task in tasks.iter() {
-            self.finish_task(task);
-        }
-        Ok(())
     }
 }

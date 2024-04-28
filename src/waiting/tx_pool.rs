@@ -1,5 +1,5 @@
 use std::hash::{Hash, Hasher};
-use crate::{process::{Mailbox, Message, Process}, protocol::{Transaction, Verified}};
+use crate::{process::{Handle, Mailbox, Message, Process}, protocol::{Transaction, Verified}, util::Error};
 use super::Mempool;
 
 struct Entry(Box<Verified<Transaction>>);
@@ -18,22 +18,31 @@ impl Hash for Entry {
 }
 
 pub struct TxPool {
-    mailbox: Mailbox,
-    leader_mode: bool,
-    pool: Mempool<Entry>
+    pool: Mempool<Entry>,
+    state: Handle,
+    leader_mode: bool
 }
 
 impl TxPool {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, state: Handle) -> Self {
         Self {
-            mailbox: Process::TxPool.take_mailbox().unwrap(),
-            leader_mode: false,
-            pool: Mempool::new(size)
+            pool: Mempool::new(size),
+            state,
+            leader_mode: false
         }
     }
-    pub async fn run(mut self) {
+}
+
+impl Process for TxPool {
+    const NAME: &'static str = "TxPool";
+    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
         loop {
-            match self.mailbox.recv().await {
+            match mailbox.recv().await {
+                Message::StartLeaderMode => self.leader_mode = true,
+                Message::EndLeaderMode => {
+                    self.pool.clear();
+                    self.leader_mode = false;
+                },
                 Message::Transaction(tx) => {
                     let tx_verified = match Verified::new(*tx) {
                         Ok(verified) => verified,
@@ -44,7 +53,7 @@ impl TxPool {
                 },
                 Message::NewLeaderSlot(slot) => {
                     let txs = self.pool.drain(|x| x.0);
-                    Process::Chain.send(Message::TransactionList(Box::new((slot, txs))));
+                    self.state.send(Message::TransactionList(Box::new((slot, txs)))).await;
                 },
                 _ => {}
             }

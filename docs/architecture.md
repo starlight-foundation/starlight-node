@@ -12,7 +12,7 @@ The Starlight node architecture consists of several components, called processes
 2. `Transmitter`: This process handles the send half of our UDP socket. It maintains the telemetry protocol state, and broadcasts to other nodes.
 - Receives:
     - *Telemetry Note*: When the `Receiver` encounters a telemetry message over the wire, it will send it to the `Transmitter` for processing.
-    - *Shred Note*: When the `Assembler` needs a shred to be broadcasted to other nodes, or when the `State` needs a newly minted shred to be sent throughout the network, they will send this message, and the `Transmitter` will send the note over the network to a subset of its peers.
+    - *Shred Note*: When the `Assembler` needs a shred to be broadcasted to other nodes, or when the `Ledger` needs a newly minted shred to be sent throughout the network, they will send this message, and the `Transmitter` will send the note over the network to a subset of its peers.
 
 3. `Receiver`: This process handles the receive half of the UDP socket, and accepts incoming messages from the network. 
 - Sends:
@@ -20,30 +20,44 @@ The Starlight node architecture consists of several components, called processes
   - *Open*: Forwards incoming open requests to the `OpenPool` for further processing.
   - *Shred Note*: Forwards incoming block shreds to the `Assembler` for assembly.
   - *Telemetry Note*: Forwards incoming telemetry messages to the `Transmitter` for processing
+  - *Vote*: Forwards incoming votes to the `VotePool` for further processing.
 
 4. `Assembler`: This process assembles block shreds into complete blocks.
 - Receives: 
   - *Shred Note*: Block shreds from the `Receiver`
 - Sends:
   - *Shred Note*: If a received shred is new, sends it to the `Transmitter` to be rebroadcast to the network.
-  - *New Block*: Sends assembled complete blocks to the `State` for further processing.
+  - *New Block*: Sends assembled complete blocks to the `Ledger` for further processing.
 
 5. `TxPool`: Active only during leader mode, this process performs initial validation on incoming transactions and maintains a priority queue based on Proof-of-Work difficulty. 
 - Receives:
   - *Transaction*: Incoming transactions from the `Receiver`
 - Sends: 
-  - *Transaction List*: When creating a new block, sends the prioritized transactions to the `State` for further validation and inclusion.
+  - *Transaction List*: When creating a new block, sends the prioritized transactions to the `Ledger` for further validation and incflusion.
 
 6. `OpenPool`: Similar to the `TxPool`, active only during leader mode and dedicated to handling `Open` blocks.
 - Receives:
   - *Open*: Incoming open requests from the `Receiver` 
 - Sends:
-  - *Open List*: When creating a new block, sends the prioritized `Open` blocks to the `State` for further validation and inclusion.
+  - *Open List*: When creating a new block, sends the prioritized `Open` blocks to the `Ledger` for further validation and inclusion.
 
-7. `State`: Maintains the current state, as well as all pending and finalized blocks, and has the authority to process and finalize transactions. 
+7. `VotePool`: Active only during leader mode, this process maintains a priority queue of votes for the current block.
+- Receives:
+  - *Vote*: Incoming votes from the `Receiver`
+- Sends:
+  - *Vote List*: When creating a new block, sends the prioritized votes to the `Ledger` for further validation and inclusion.
+
+8. `Ledger`: Maintains the current state, as well as all pending and finalized blocks, and has the authority to process and finalize transactions. 
 - Receives:
   - *Transaction List*: Validated transactions from the `TxPool` in leader mode
   - *Open List*: Validated open requests from the `OpenPool` in leader mode
+  - *Vote List*: Validated votes from the `VotePool` in leader mode
+
+## Ledger architecture
+The `Ledger` itself is split into a few components:
+
+1. `Bank`: This object maintains the current state of the network. It supports a few operations:
+
 
 ## Serialization
 One of the principal concerns of any network-enabled application is how the various data structures should be serialized and deserialized over the network. Ideally, this should involve as little copies as possible.

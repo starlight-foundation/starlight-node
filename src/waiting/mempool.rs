@@ -1,6 +1,4 @@
-use std::hash::Hasher;
-
-use crate::{keys::Difficulty, protocol::Transaction};
+use crate::keys::Difficulty;
 use std::hash::Hash;
 use topk::FilteredSpaceSaving;
 
@@ -24,6 +22,9 @@ impl<T: Eq + Hash> Mempool<T> {
             return;
         }
         self.pool.insert(t, d.as_u64());
+    }
+    pub fn clear(&mut self) {
+        self.pool.clear();
     }
     /// Drains this `Mempool` with `f: T -> U`, returning all items as a `Vec<U>`.
     pub fn drain<U>(&mut self, f: impl Fn(T) -> U) -> Vec<U> {

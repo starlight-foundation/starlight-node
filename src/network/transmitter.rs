@@ -126,7 +126,7 @@ impl Transmitter {
             self.visible_ep,
             self.version,
         ));
-        let msg = Note::Tel(tel_note);
+        let msg = Note::TelemetryNote(tel_note);
         let bytes = Arc::new(msg.serialize(MTU));
 
         // Broadcast the telemetry message to initial peers or a subset of peers
@@ -191,7 +191,7 @@ impl Transmitter {
 
         // Broadcast the telemetry message to other peers if necessary
         if should_broadcast {
-            let msg = Note::Tel(tel_note);
+            let msg = Note::TelemetryNote(tel_note);
             let bytes = Arc::new(msg.serialize(MTU));
             self.broadcast_fanout(bytes);
         }
@@ -202,7 +202,7 @@ impl Transmitter {
             // Shred notes sent back from `Restorer`
             Message::ShredNote(shred_note) => {
                 // Broadcast the shred message to a subset of peers
-                let bytes = Arc::new(Note::Shred(shred_note).serialize(MTU));
+                let bytes = Arc::new(Note::ShredNote(shred_note).serialize(MTU));
                 self.broadcast_fanout(bytes);
             },
             Message::TelemetryNote(tel_note) => {
