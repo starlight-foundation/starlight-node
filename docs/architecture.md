@@ -1,18 +1,18 @@
 # Node Architecture 
 
 ## Processes
-The Starlight node architecture consists of several components, called processes, that work together to enable the functioning of the Starlight blockchain network. Each process can be referenced by a `Handle`, and has a `Mailbox` to receive messages. For efficient message passing, Tokio channels are used behind the scenes. The different processes are:
+The Starlight node architecture consists of several components, called processes, each with its own thread, that work together to enable the functioning of the Starlight blockchain network. Each process can be referenced by a `Handle`, and has a `Mailbox` to receive messages. For efficient message passing, Tokio channels are used behind the scenes. The different processes are:
 
 1. `Scheduler`: This process manages the timing of operations in the Starlight network by controlling when the node switches between different modes based on a schedule. Starlight divides time into slots, and each slot has a designated leader node responsible for creating new blocks. The `Scheduler`'s main job is to track this leader schedule and tell the node when to enter and exit leader mode. When in leader mode, the node creates new blocks.
 - Sends:
-    - *Start of Leader Mode*: Sent at the start of the slot before the node's first leader slot, telling the node to start accepting transactions from the network. 
-    - *End of Leader Mode*: Sent at the end of the node's last leader slot, telling the node to stop accepting transactions.
-    - *New Leader Slot*: Sent at the start of each of the node's leader slots, triggering the node to process queued transactions, create a new block, and send it out to the network.
+  - *Start of Leader Mode*: Sent at the start of the slot before the node's first leader slot, telling the node to start accepting transactions from the network. 
+  - *End of Leader Mode*: Sent at the end of the node's last leader slot, telling the node to stop accepting transactions.
+  - *New Leader Slot*: Sent at the start of each of the node's leader slots, triggering the node to process queued transactions, create a new block, and send it out to the network.
 
 2. `Transmitter`: This process handles the send half of our UDP socket. It maintains the telemetry protocol state, and broadcasts to other nodes.
 - Receives:
-    - *Telemetry Note*: When the `Receiver` encounters a telemetry message over the wire, it will send it to the `Transmitter` for processing.
-    - *Shred Note*: When the `Assembler` needs a shred to be broadcasted to other nodes, or when the `Ledger` needs a newly minted shred to be sent throughout the network, they will send this message, and the `Transmitter` will send the note over the network to a subset of its peers.
+  - *Telemetry Note*: When the `Receiver` encounters a telemetry message over the wire, it will send it to the `Transmitter` for processing.
+  - *Shred Note*: When the `Assembler` needs a shred to be broadcasted to other nodes, or when the `Ledger` needs a newly minted shred to be sent throughout the network, they will send this message, and the `Transmitter` will send the note over the network to a subset of its peers.
 
 3. `Receiver`: This process handles the receive half of the UDP socket, and accepts incoming messages from the network. 
 - Sends:
@@ -53,11 +53,13 @@ The Starlight node architecture consists of several components, called processes
   - *Open List*: Validated open requests from the `OpenPool` in leader mode
   - *Vote List*: Validated votes from the `VotePool` in leader mode
 
+9. `Rpc`: Handles requests sent over ZeroMQ.
+
 ## Ledger architecture
 The `Ledger` itself is split into a few components:
 
 1. `Bank`: This object maintains the current state of the network. It supports a few operations:
-
+- 
 
 ## Serialization
 One of the principal concerns of any network-enabled application is how the various data structures should be serialized and deserialized over the network. Ideally, this should involve as little copies as possible.

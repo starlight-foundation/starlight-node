@@ -13,8 +13,6 @@ use crate::{
     util::{Error, Version},
 };
 use config::Config;
-use serde::{Deserialize, Serialize};
-use tokio::net::UdpSocket;
 use std::sync::Arc;
 use std::{
     fs::{self, File},
@@ -59,10 +57,8 @@ pub async fn start() {
     log_info!("Using public key {}", public);
     log_info!("Using address {}", public.to_address());
     let rpc = Rpc::new(config.rpc_endpoint);
-    tokio::spawn(async move {
-        rpc.run().await.unwrap();
-    });
-    log_info!("RPC listening on http://{}", config.rpc_endpoint);
+    process::spawn(rpc);
+    log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
     let id = Identity { private, public };
     let socket = match UdpSocket::bind(
         config.node_bind_endpoint.to_socket_addr()

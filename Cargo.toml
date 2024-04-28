@@ -12,18 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 bitvec = "1.0.1"
-serde = { version = "1.0.196", features = ["derive"] }
 rand = "0.8.5"
 ed25519-dalek-blake2-feeless = "1.0.1"
 primitive-types = "0.12.2"
 hex = "0.4.3"
-bincode = "1.3.3"
 priority-queue = "2.0.2"
-hyper = { version = "1.2.0", features = ["server", "http1"] }
-tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
-serde_json = "1.0.114"
-hyper-util = { version = "0.1.3", features = ["tokio"] }
-http-body-util = "0.1.0"
 blake2b_simd = "1.0.2"
 reed-solomon-erasure = "6.0.0"
 zstd-safe = { version = "7.0.0", features = ["experimental"] }
@@ -36,6 +29,10 @@ blake3 = "1.5.1"
 heed = { version = "0.11.0", features = ["lmdb", "lmdb-rkv-sys"], default-features = false }
 memmap2 = "0.9.4"
 rayon = "1.10.0"
+chrono = "0.4.38"
+nanoserde = "0.1.37"
+serde_json = "1.0.116"
+zmq = "0.10.0"
 
 [dev-dependencies]
 criterion = "0.5.1"

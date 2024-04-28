@@ -1,11 +1,11 @@
 use std::{array::IntoIter, fmt::Display, net::Ipv4Addr, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use nanoserde::{DeJson, SerJson};
 
 use crate::{error, util::Error};
 
 /// An ipv4 endpoint
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Endpoint {
     pub addr: [u8; 4],
     pub port: u16,
@@ -73,5 +73,18 @@ impl FromStr for Endpoint {
             addr: addr.parse::<std::net::Ipv4Addr>()?.octets(),
             port,
         })
+    }
+}
+
+impl SerJson for Endpoint {
+    fn ser_json(&self, s: &mut serde_json::Serializer) -> Result<(), serde_json::Error> {
+        s.ser_str(self.to_string())
+    }
+}
+
+impl DeJson for Endpoint {
+    fn de_json(d: &mut serde_json::Deserializer) -> Result<Self, serde_json::Error> {
+        let s = d.de_str()?;
+        Self::from_str(s)
     }
 }

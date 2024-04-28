@@ -1,35 +1,15 @@
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use nanoserde::{DeJson, SerJson};
 
 use crate::{keys::Seed, network::Endpoint};
 
-#[derive(Serialize, Deserialize)]
+#[derive(SerJson, DeJson)]
 pub struct Config {
-    #[serde(
-        serialize_with = "crate::util::serialize_to_display",
-        deserialize_with = "crate::util::deserialize_from_string"
-    )]
     pub rpc_endpoint: Endpoint,
-    #[serde(
-        serialize_with = "crate::util::serialize_to_display",
-        deserialize_with = "crate::util::deserialize_from_string"
-    )]
     pub node_bind_endpoint: Endpoint,
-    #[serde(
-        serialize_with = "crate::util::serialize_to_display",
-        deserialize_with = "crate::util::deserialize_from_string"
-    )]
     pub node_external_endpoint: Endpoint,
-    #[serde(
-        serialize_with = "crate::util::serialize_to_display",
-        deserialize_with = "crate::util::deserialize_from_string"
-    )]
     pub node_seed: Seed,
-    #[serde(
-        serialize_with = "crate::util::serialize_list_to_display",
-        deserialize_with = "crate::util::deserialize_list_from_string"
-    )]
     pub initial_peers: Vec<Endpoint>,
     pub max_less_peers: usize,
     pub max_greater_peers: usize,
