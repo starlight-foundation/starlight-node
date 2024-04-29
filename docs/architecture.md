@@ -35,7 +35,7 @@ The Starlight node architecture consists of several components, called processes
 - Receives:
   - *Transaction*: Incoming transactions from the `Receiver`
 - Sends: 
-  - *Transaction List*: When creating a new block, sends the prioritized transactions to the `Ledger` for further validation and incflusion.
+  - *Transaction List*: When creating a new block, sends the prioritized transactions to the `Ledger` for further validation and inclusion.
 
 6. `OpenPool`: Similar to the `TxPool`, active only during leader mode and dedicated to handling `Open` blocks.
 - Receives:
@@ -62,10 +62,33 @@ The Starlight node architecture consists of several components, called processes
   - *Rpc Response*: Incoming RPC responses from the relevant process, which it forwards over the network
 
 ## Ledger architecture
-The `Ledger` itself is split into a few components:
+The `Ledger` itself depends on several other processes:
 
-1. `Bank`: This object maintains the current state of the network. It supports a few operations:
-- 
+1. `Directory`: This process implements a persistent mapping from public keys to account indices.
+- Receives:
+  - *Get request*: Get the index of an account from its public key.
+  - *Put request*: Put a (public key, index) key-value pair into the mapping, failing if it already exists.
+- Sends:
+  - *Get result*: The result of the Get operation.
+  - *Put result*: The result of the Put operation.
+
+2. `Bank`: This object maintains a persistent list of all accounts. It supports the following operations:
+- *Push*: Push an empty account with the given public key and representative to the end of the list, then return its index.
+- *Pop*: Remove the last account from the end of the list.
+- *Queue transfer*: Queue a transfer from one account to another within a given batch: ensure that the transfer can be performed, and modify the batch of the account to prohibit any other transfers from that account from going through.
+- *Finish transfer*: Finish a previously queued transfer by moving the funds from the source to the destination.
+- *Revert transfer*: Revert a previously finished transfer by moving the funds from the destination to the source.
+- *Finalize transfer*: Finalize a previously finished transfer by modifying the finalized balances of both accounts, and updating the weights of the representatives.
+- *Finalize change representative*: Finalize a change representative operation by modifying the representative of the account, and updating the weights of the representatives.
+
+3. `Chain`: This process maintains the directed tree that represents all unfinalized blocks, and the list of immutable finalized blocks. The `Chain` keeps the `Bank` up-to-date with the latest finalized blocks, as well as the tip of the longest chain.
+- Receives:
+  - *Finalize hash*: A hash is requested to be finalized.
+  - *Add block*: A block is added to the tree.
+- Sends:
+  - *Process block*: Instructs a block to be processed by the `Bank`.
+  - *Revert block*: Instructs a block to be reverted by the `Bank`.
+  - *Finalize block*: Instructs a block to be finalized by the `Bank`.
 
 ## Serialization
 Starlight uses `bincode` for data serialization / deserialization over the network.

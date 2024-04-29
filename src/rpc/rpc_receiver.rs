@@ -36,5 +36,4 @@ impl Process for RpcReceiver {
             ));
         }
     }
-
 }

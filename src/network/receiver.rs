@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use tokio::net::UdpSocket;
+use std::{sync::Arc, net::UdpSocket};
 
 use crate::{process::{Handle, Mailbox, Message, Process}, util::{DefaultInitVec, Error}};
 
