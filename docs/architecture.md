@@ -13,6 +13,7 @@ The Starlight node architecture consists of several components, called processes
 - Receives:
   - *Telemetry Note*: When the `Receiver` encounters a telemetry message over the wire, it will send it to the `Transmitter` for processing.
   - *Shred Note*: When the `Assembler` needs a shred to be broadcasted to other nodes, or when the `Ledger` needs a newly minted shred to be sent throughout the network, they will send this message, and the `Transmitter` will send the note over the network to a subset of its peers.
+  - *Shred Request*: TODO
 
 3. `Receiver`: This process handles the receive half of the UDP socket, and accepts incoming messages from the network. 
 - Sends:
@@ -21,6 +22,7 @@ The Starlight node architecture consists of several components, called processes
   - *Shred Note*: Forwards incoming block shreds to the `Assembler` for assembly.
   - *Telemetry Note*: Forwards incoming telemetry messages to the `Transmitter` for processing
   - *Vote*: Forwards incoming votes to the `VotePool` for further processing.
+  - *Shred Request*: Forwards requests for incoming shreds to the `Transmitter`, who validates that the requesting node has enough "social credit" to make the request.
 
 4. `Assembler`: This process assembles block shreds into complete blocks.
 - Receives: 
@@ -53,7 +55,11 @@ The Starlight node architecture consists of several components, called processes
   - *Open List*: Validated open requests from the `OpenPool` in leader mode
   - *Vote List*: Validated votes from the `VotePool` in leader mode
 
-9. `Rpc`: Handles requests sent over ZeroMQ.
+9. `Rpc`: Handles RPC requests and responses sent over TCP.
+- Sends:
+  - *Rpc Request*: Sends incoming RPC requests over the network to the relevant process
+- Receives:
+  - *Rpc Response*: Incoming RPC responses from the relevant process, which it forwards over the network
 
 ## Ledger architecture
 The `Ledger` itself is split into a few components:

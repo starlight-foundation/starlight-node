@@ -2,14 +2,16 @@ use std::{io::ErrorKind, net::TcpListener};
 
 use crate::{error, process::{self, Handle, Mailbox, Process}, util::Error};
 
-use super::RpcReceiver;
-pub struct RpcReceiver {
+use super::{RpcReceiver, RpcSender};
+
+pub struct RpcServer {
+    destination: Handle,
     listener: TcpListener
 }
 
-impl RpcReceiver {
-    pub fn new(listener: TcpListener) -> Self {
-        Self { listener }
+impl RpcServer {
+    pub fn new(destination: Handle, listener: TcpListener) -> Self {
+        Self { destination, listener }
     }
 }
 
@@ -46,7 +48,7 @@ fn is_tcp_fatal(kind: ErrorKind) -> bool {
     }
 }   
 
-impl Process for RpcReceiver {
+impl Process for RpcServer {
     const NAME: &'static str = "RpcReceiver";
     const RESTART_ON_CRASH: bool = true;
 
@@ -57,7 +59,12 @@ impl Process for RpcReceiver {
                 Err(e) if is_tcp_fatal(e.kind()) => return Err(e),
                 _ => continue
             };
-            process::spawn(RpcReceiver::new(stream));
+            let rpc_sender = process::spawn(RpcSender::new(self.destination.clone()));
+            process::spawn(RpcReceiver::new(
+                self.destination.clone(),
+                rpc_sender,
+                stream
+            ));
         }
         Err(error!("tcp listener finished"))
     }

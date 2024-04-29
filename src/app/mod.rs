@@ -5,7 +5,7 @@ pub mod log;
 use crate::network::{Assembler, Endpoint, Receiver, Transmitter};
 use crate::process;
 use crate::protocol::Amount;
-use crate::rpc::RpcReceiver;
+use crate::rpc::RpcServer;
 use crate::state::{Block, State};
 use crate::waiting::{OpenPool, TxPool};
 use crate::{
@@ -57,7 +57,7 @@ pub async fn start() {
     let public = private.to_public();
     log_info!("Using public key {}", public);
     log_info!("Using address {}", public.to_address());
-    let rpc = RpcReceiver::new(config.rpc_endpoint);
+    let rpc = RpcServer::new(config.rpc_endpoint);
     process::spawn(rpc);
     log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
     let id = Identity { private, public };

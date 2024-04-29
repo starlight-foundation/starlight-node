@@ -1,11 +1,18 @@
 use std::{io::Read, net::TcpStream};
 
-use crate::{error, process::{Handle, Mailbox, Process}, util::Error};
+use crate::{error, process::{Handle, Mailbox, Message, Process}, util::Error};
 
-use super::Command;
+use super::RpcRequest;
 
 pub struct RpcReceiver {
+    destination: Handle,
+    rpc_sender: Handle,
     stream: TcpStream
+}
+impl RpcReceiver {
+    pub fn new(destination: Handle, rpc_sender: Handle, stream: TcpStream) -> Self {
+        Self { destination, rpc_sender, stream }
+    }
 }
 
 impl Process for RpcReceiver {
@@ -23,7 +30,10 @@ impl Process for RpcReceiver {
             }
             self.stream.read_exact(&mut buf[..len]);
             let stream = self.stream.try_clone()?;
-            let cmd: Box<(u64, Command)> = bincode::deserialize(&buf[..len])?;
+            let (id, cmd): (u64, RpcRequest) = bincode::deserialize(&buf[..len])?;
+            self.destination.send(Message::RpcRequest(
+                Box::new((self.rpc_sender.clone(), id, cmd))
+            ));
         }
     }
 
