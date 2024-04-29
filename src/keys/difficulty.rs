@@ -2,7 +2,6 @@
 use crate::error;
 use crate::util::Error;
 use crate::util::{deserialize_from_str, expect_len, to_hex};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use std::str::FromStr;
@@ -54,27 +53,6 @@ impl FromStr for Difficulty {
         hex::decode_to_slice(s, &mut slice)
             .map_err(|source| error!("can't decode hex: {}", source))?;
         Ok(Difficulty::from_be_slice(&slice).unwrap())
-    }
-}
-
-impl Serialize for Difficulty {
-    fn serialize<S>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(to_hex(&self.0.to_be_bytes()).as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for Difficulty {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, <D as Deserializer<'de>>::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserialize_from_str(deserializer)
     }
 }
 

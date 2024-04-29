@@ -62,6 +62,9 @@ The `Ledger` itself is split into a few components:
 - 
 
 ## Serialization
+Starlight uses `bincode` for data serialization / deserialization over the network.
+
+## Data lifecycle
 One of the principal concerns of any network-enabled application is how the various data structures should be serialized and deserialized over the network. Ideally, this should involve as little copies as possible.
 
 From the leader's end, the lifecycle of a transaction is roughly as follows:

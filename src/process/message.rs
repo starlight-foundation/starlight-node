@@ -1,4 +1,4 @@
-use crate::{network::{ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, static_assert};
+use crate::{network::{ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::Command, static_assert};
 
 #[derive(Clone)]
 pub enum Message {
@@ -21,6 +21,9 @@ pub enum Message {
     // Open messages
     Open(Box<Open>),
     OpenList(Box<(Slot, Vec<Box<Verified<Open>>>)>),
+    
+    // RPC
+    Command(Box<Command>)
 }
 
 static_assert!(std::mem::size_of::<Message>() == 16);

@@ -5,7 +5,7 @@ pub mod log;
 use crate::network::{Assembler, Endpoint, Receiver, Transmitter};
 use crate::process;
 use crate::protocol::Amount;
-use crate::rpc::Rpc;
+use crate::rpc::RpcReceiver;
 use crate::state::{Block, State};
 use crate::waiting::{OpenPool, TxPool};
 use crate::{
@@ -13,6 +13,7 @@ use crate::{
     util::{Error, Version},
 };
 use config::Config;
+use std::net::UdpSocket;
 use std::sync::Arc;
 use std::{
     fs::{self, File},
@@ -27,7 +28,7 @@ pub async fn start() {
     let config = match fs::read_to_string(CONFIG_FILE) {
         Ok(config) => {
             log_info!("Loaded config from {}", CONFIG_FILE);
-            match toml::from_str(&config) {
+            match serde_json::from_str(&config) {
                 Ok(config) => config,
                 Err(e) => {
                     log_error!("Failed to parse config: {}", e);
@@ -39,7 +40,7 @@ pub async fn start() {
             let config = Config::new();
             match (|| -> Result<(), Error> {
                 let mut f = File::create(CONFIG_FILE)?;
-                f.write_all(toml::to_string(&config).unwrap().as_bytes())?;
+                f.write_all(serde_json::to_string(&config).unwrap().as_bytes())?;
                 Ok(())
             })() {
                 Ok(_) => {
@@ -56,13 +57,13 @@ pub async fn start() {
     let public = private.to_public();
     log_info!("Using public key {}", public);
     log_info!("Using address {}", public.to_address());
-    let rpc = Rpc::new(config.rpc_endpoint);
+    let rpc = RpcReceiver::new(config.rpc_endpoint);
     process::spawn(rpc);
     log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
     let id = Identity { private, public };
     let socket = match UdpSocket::bind(
         config.node_bind_endpoint.to_socket_addr()
-    ).await {
+    ) {
         Ok(socket) => socket,
         Err(e) => {
             log_error!("Failed to bind to {}: {}", config.node_bind_endpoint, e);
@@ -84,6 +85,7 @@ pub async fn start() {
     ));
     let genesis = Block::genesis(private);
     let state = match State::new(
+        id,
         &config.data_dir,
         Arc::new(genesis)
     ) {
