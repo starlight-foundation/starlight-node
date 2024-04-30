@@ -76,10 +76,10 @@ pub fn start() {
     });
 
     // Start the network broadcaster and transmitter process
-    let broadcaster = process::spawn_infallible(Broadcaster::new(
+    let broadcaster = process::spawn_endless(Broadcaster::new(
         network_socket.clone()
     ));
-    let transmitter = process::spawn_infallible(Transmitter::new(
+    let transmitter = process::spawn_endless(Transmitter::new(
         network_socket.clone(),
         config.node_external_endpoint,
         id,

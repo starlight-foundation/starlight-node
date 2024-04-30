@@ -44,15 +44,16 @@ pub fn spawn<P: Process + Send + 'static>(mut process: P) -> Handle {
                 }
             }
         }
+        handle.deactivate();
     });
     handle
 }
 
-pub trait ProcessInfallible {
+pub trait ProcessEndless {
     fn run(&mut self, mailbox: Mailbox, handle: Handle) -> !;
 }
 
-pub fn spawn_infallible<P: ProcessInfallible + Send + 'static>(mut process: P) -> Handle {
+pub fn spawn_endless<P: ProcessEndless + Send + 'static>(mut process: P) -> Handle {
     let (tx, rx) = kanal::unbounded();
     let handle = Handle(tx.clone());
     thread::spawn(move || {
@@ -74,7 +75,7 @@ fn recv_message(socket: &mut TcpStream) -> Result<(Handle, Message), Error> {
 }
 
 fn send_message(socket: &mut TcpStream, msg: Message) -> Result<(), Error> {
-    let mut buf = Vec::with_capacity(4096);
+    let mut buf = Vec::new();
     buf.extend_from_slice(&0u32.to_le_bytes());
     if util::encode_into_writer(&mut buf, &msg).is_err() {
         return Ok(())

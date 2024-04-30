@@ -20,7 +20,7 @@ static_assert!(std::mem::size_of::<Handle>() == std::mem::size_of::<usize>());
 
 impl Handle {
     // safety: guaranteed by above static assert
-    fn to_usize(&self) -> usize {
+    const fn to_usize(&self) -> usize {
         unsafe {
             std::mem::transmute_copy(self)
         }
@@ -29,6 +29,12 @@ impl Handle {
 
 #[static_init::dynamic]
 static HANDLE_MAP: Mutex<HashMap<u64, Handle>> = Mutex::new(HashMap::new());
+
+impl Handle {
+    pub(super) fn deactivate(&self) {
+        HANDLE_MAP.lock().unwrap().remove(&(self.to_usize() as u64));
+    }
+}
 
 impl Encode for Handle {
     fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {

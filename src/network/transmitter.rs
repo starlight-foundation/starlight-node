@@ -3,7 +3,7 @@ use std::{net::UdpSocket, sync::Arc, time::Duration};
 use rand::Rng;
 
 use crate::{
-    error, keys::{Identity, Private, Public, Signature}, process::{self, Handle, Mailbox, Message, Process, ProcessInfallible}, protocol::{Amount, Slot, Transaction}, util::{self, DefaultInitVec, Error, Ticker, UninitVec, Version}
+    error, keys::{Identity, Private, Public, Signature}, process::{self, Handle, Mailbox, Message, Process, ProcessEndless}, protocol::{Amount, Slot, Transaction}, util::{self, DefaultInitVec, Error, Ticker, UninitVec, Version}
 };
 
 use super::{models::TelemetryNote, CenterMap, Endpoint, Note, Peer, Shred, ShredNote};
@@ -202,11 +202,11 @@ impl Transmitter {
     }
 }
 
-impl ProcessInfallible for Transmitter {
+impl ProcessEndless for Transmitter {
     // Run the transmitter
     fn run(&mut self, mut mailbox: Mailbox, handle: Handle) -> ! {
         // Spawn a process to send messages at an interval
-        process::spawn_infallible(Ticker::new(handle, Duration::from_secs(PEER_UPDATE_INTERVAL)));
+        process::spawn_endless(Ticker::new(handle, Duration::from_secs(PEER_UPDATE_INTERVAL)));
         loop {
             self.on_msg(mailbox.recv());
         }

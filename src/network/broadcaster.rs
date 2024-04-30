@@ -1,6 +1,6 @@
 use std::{net::UdpSocket, sync::Arc};
 
-use crate::{process::{Handle, Mailbox, Message, Process, ProcessInfallible}, util::Error};
+use crate::{process::{Handle, Mailbox, Message, Process, ProcessEndless}, util::Error};
 
 pub struct Broadcaster {
     socket: Arc<UdpSocket>
@@ -12,7 +12,7 @@ impl Broadcaster {
     }
 }
 
-impl ProcessInfallible for Broadcaster {
+impl ProcessEndless for Broadcaster {
     fn run(&mut self, mut mailbox: Mailbox, handle: Handle) -> ! {
         loop {
             let msg = match mailbox.recv() {
