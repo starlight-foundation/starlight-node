@@ -1,8 +1,8 @@
-use bincode::Encode;
+use bincode::{Decode, Encode};
 
 use crate::keys::Work;
 
-#[derive(Encode)]
+#[derive(Encode, Decode)]
 pub enum RpcResponse {
     AccountBalance(u64),
     WorkGenerate(Work)

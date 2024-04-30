@@ -16,7 +16,7 @@ impl Process for Assembler {
     const NAME: &'static str = "Assembler";
     const RESTART_ON_CRASH: bool = true;
 
-    fn run(&mut self, mailbox: &mut Mailbox, handle: Handle) -> Result<(), Error> {
+    fn run(&mut self, mailbox: Mailbox, handle: Handle) -> Result<(), Error> {
         loop {
             process::sleep(Duration::from_secs(1));
         }

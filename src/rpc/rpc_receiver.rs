@@ -19,7 +19,7 @@ impl Process for RpcReceiver {
     const NAME: &'static str = "RpcReceiver";
     const RESTART_ON_CRASH: bool = false;
     
-    fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    fn run(&mut self, mailbox: Mailbox, _: Handle) -> Result<(), Error> {
         let mut buf = Vec::default_init(4096);
         loop {
             let mut len = [0u8; 4];

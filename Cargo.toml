@@ -31,6 +31,7 @@ rayon = "1.10.0"
 chrono = "0.4.38"
 nanoserde = "0.1.37"
 bincode = "2.0.0-rc.3"
+kanal = { version = "0.1.0-pre8", features = [], default-features = false }
 
 [dev-dependencies]
 criterion = "0.5.1"

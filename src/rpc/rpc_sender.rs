@@ -18,7 +18,7 @@ impl Process for RpcSender {
     const NAME: &'static str = "RpcSender";
     const RESTART_ON_CRASH: bool = false;
     
-    fn run(&mut self, mailbox: &mut Mailbox, handle: Handle) -> Result<(), Error> {
+    fn run(&mut self, mut mailbox: Mailbox, handle: Handle) -> Result<(), Error> {
         let mut buf = Vec::with_capacity(4096);
         loop {
             let rpc_response = match mailbox.recv() {

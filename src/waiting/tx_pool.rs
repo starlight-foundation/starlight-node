@@ -37,7 +37,7 @@ impl Process for TxPool {
     const NAME: &'static str = "TxPool";
     const RESTART_ON_CRASH: bool = true;
 
-    fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    fn run(&mut self, mut mailbox: Mailbox, _: Handle) -> Result<(), Error> {
         loop {
             match mailbox.recv() {
                 Message::StartLeaderMode => self.leader_mode = true,

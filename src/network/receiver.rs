@@ -36,7 +36,7 @@ impl Process for Receiver {
     const RESTART_ON_CRASH: bool = true;
 
     // Run the receiver
-    fn run(&mut self, _: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    fn run(&mut self, _: Mailbox, _: Handle) -> Result<(), Error> {
         let socket = self.socket.clone();
 
         // Spawn a task to receive notes from the socket

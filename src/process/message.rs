@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
+use bincode::{Decode, Encode};
+
 use crate::{network::{Endpoint, ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::{RpcRequest, RpcResponse}, static_assert};
 
 use super::Handle;
 
+#[derive(Encode, Decode)]
 pub enum Message {
     // Leader mode messages
     StartLeaderMode,
@@ -33,7 +36,10 @@ pub enum Message {
     Broadcast(Box<(Arc<Vec<Endpoint>>, Vec<u8>)>),
 
     // Tick
-    Tick
+    Tick,
+
+    // Process messages
+    Shutdown
 }
 
 static_assert!(std::mem::size_of::<Message>() == 16);
