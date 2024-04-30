@@ -1,7 +1,6 @@
 use std::{thread, time::Duration};
 
 use kanal::Receiver;
-use bincode::{de::Decoder, enc::Encoder, error::{DecodeError, EncodeError}, Decode, Encode};
 
 use super::Message;
 

@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Mutex}, time::Duration};
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+//use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{error, keys::{Hash, Identity, Private}, process::{self, Handle, Mailbox, Message, Process}, protocol::{Amount, Open, Slot, Task, Transaction, Verified}, util::Error};
 

@@ -10,7 +10,7 @@ use std::net::TcpStream;
 use std::thread;
 use std::time::Duration;
 use crate::network::Endpoint;
-use crate::util::{self, DefaultInitVec, Error, UninitVec};
+use crate::util::{self, Error, UninitVec};
 use crate::{log_error, log_warn};
 
 const SLEEP_MS_BEFORE_RETRY: u64 = 20;
@@ -63,7 +63,7 @@ pub fn spawn_infallible<P: ProcessInfallible + Send + 'static>(mut process: P) -
     handle
 }
 
-fn recv_message(socket: &mut TcpStream) -> Result<Message, Error> {
+fn recv_message(socket: &mut TcpStream) -> Result<(Handle, Message), Error> {
     let mut len = [0u8; 4];
     socket.read_exact(&mut len)?;
     let len = u32::from_le_bytes(len) as usize;
@@ -75,15 +75,19 @@ fn recv_message(socket: &mut TcpStream) -> Result<Message, Error> {
 
 fn send_message(socket: &mut TcpStream, msg: Message) -> Result<(), Error> {
     let mut buf = Vec::with_capacity(4096);
+    buf.extend_from_slice(&0u32.to_le_bytes());
     if util::encode_into_writer(&mut buf, &msg).is_err() {
         return Ok(())
     }
+    let len = buf.len() as u32;
+    buf[0..4].copy_from_slice(&len.to_le_bytes());
     socket.write_all(&mut buf)?;
     Ok(())
 }
 
 pub fn connect_remote(ep: Endpoint) -> Handle {
     let (tx, rx) = kanal::unbounded();
+    let handle = Handle(tx.clone());
     thread::spawn(move || {
         let mut first = true;
         loop {
@@ -107,23 +111,21 @@ pub fn connect_remote(ep: Endpoint) -> Handle {
                         Ok(v) => v,
                         Err(_) => break
                     };
-                    match msg {
-                        Message::Shutdown => break,
-                        _ => {}
-                    }
                     if send_message(&mut socket1, msg).is_err() {
                         break;
                     }
                 }
             });
             loop {
-                let msg = match recv_message(&mut socket2) {
+                let (handle, msg) = match recv_message(&mut socket2) {
                     Ok(v) => v,
                     Err(_) => break
                 };
+                handle.send(msg);
             }
-            tx.send(Message::Shutdown);
+            tx.close();
         }
     });
-    Handle(tx)
+    handle
 }
+

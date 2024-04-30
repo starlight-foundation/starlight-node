@@ -36,10 +36,7 @@ pub enum Message {
     Broadcast(Box<(Arc<Vec<Endpoint>>, Vec<u8>)>),
 
     // Tick
-    Tick,
-
-    // Process messages
-    Shutdown
+    Tick
 }
 
 static_assert!(std::mem::size_of::<Message>() == 16);

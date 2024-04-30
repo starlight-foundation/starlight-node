@@ -8,7 +8,7 @@ mod ticker;
 
 use std::io::Write;
 
-use bincode::{enc::write::Writer, error::{DecodeError, EncodeError}, Decode, Encode};
+use bincode::{config::{Configuration, Fixint, LittleEndian, NoLimit}, enc::write::Writer, error::{DecodeError, EncodeError}, Decode, Encode};
 use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
 
 pub use archived::{ArchivableTo, Archived};
@@ -39,12 +39,14 @@ pub trait UninitVec<T: Copy> {
 
 impl<T: Copy> UninitVec<T> for Vec<T> {}
 
+const BINCODE_CONFIG: Configuration<LittleEndian, Fixint, NoLimit> = bincode::config::standard().with_fixed_int_encoding();
+
 pub fn encode_into_writer<W: Write, E: Encode>(w: &mut W, e: &E) -> Result<(), EncodeError> {
-    bincode::encode_into_std_write(e, w, bincode::config::standard())?;
+    bincode::encode_into_std_write(e, w, BINCODE_CONFIG)?;
     Ok(())
 }
 pub fn decode_from_slice<D: Decode>(slice: &[u8]) -> Result<D, DecodeError> {
-    bincode::decode_from_slice(slice, bincode::config::standard()).map(|x| x.0)
+    bincode::decode_from_slice(slice, BINCODE_CONFIG).map(|x| x.0)
 }
 
 pub trait UninitBitVec<T: BitStore, O: BitOrder> {

@@ -28,7 +28,7 @@ impl Process for RpcReceiver {
             if len > buf.len() {
                 return Err(error!("too big"));
             }
-            self.stream.read_exact(&mut buf[..len]);
+            self.stream.read_exact(&mut buf[..len])?;
             let stream = self.stream.try_clone()?;
             let (id, cmd): (u64, RpcRequest) = match util::decode_from_slice(&buf[..len]) {
                 Ok(v) => v,
