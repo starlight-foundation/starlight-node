@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 
 pub trait ArchivableTo<S> {
     fn archive(self) -> S;
@@ -8,7 +8,7 @@ pub trait ArchivableTo<S> {
 }
 
 /// Archived version of a type `T`, represented as a source `S`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Encode, Decode)]
 pub struct Archived<T: ArchivableTo<S>, S> {
     source: S,
     _phantom: PhantomData<T>,

@@ -33,9 +33,11 @@ impl OpenPool {
 
 impl Process for OpenPool {
     const NAME: &'static str = "OpenPool";
-    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    const RESTART_ON_CRASH: bool = true;
+
+    fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
         loop {
-            match mailbox.recv().await {
+            match mailbox.recv() {
                 Message::StartLeaderMode => self.leader_mode = true,
                 Message::EndLeaderMode => {
                     self.pool.clear();
@@ -51,7 +53,7 @@ impl Process for OpenPool {
                 },
                 Message::NewLeaderSlot(slot) => {
                     let opens = self.pool.drain(|x| x.0);
-                    self.state.send(Message::OpenList(Box::new((slot, opens)))).await;
+                    self.state.send(Message::OpenList(Box::new((slot, opens))));
                 },
                 _ => {}
             }

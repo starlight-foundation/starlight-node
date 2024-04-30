@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 
 use super::Slot;
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq)]
 pub struct Epoch(pub(super) u64);
 
 impl Epoch {

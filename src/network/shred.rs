@@ -3,12 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use bincode::{Decode, Encode};
 use bitvec::vec::BitVec;
 use reed_solomon_erasure::{
     galois_8::{Field, ReedSolomon},
     ReconstructShard,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::{
     keys::HashBuilder,
@@ -65,7 +65,7 @@ impl AsMut<[u8]> for Shred {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Encode, Decode, Clone, Default)]
 pub struct Shred {
     // The total number of batches in the shredded data
     n_batches: u32,

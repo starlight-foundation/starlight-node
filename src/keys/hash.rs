@@ -1,11 +1,12 @@
 use std::io::Write;
 
+use bincode::{Decode, Encode};
 use blake3::Hasher;
 
 use crate::hexify;
 
 /// A 32-byte blake3 hash
-#[derive(Clone, Copy, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, std::hash::Hash, PartialOrd, Ord, Decode, Encode)]
 #[repr(align(8))]
 pub struct Hash([u8; 32]);
 

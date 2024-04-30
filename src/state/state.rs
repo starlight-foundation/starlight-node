@@ -1,9 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, time::Duration};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use tokio::sync::oneshot;
 
-use crate::{error, keys::{Hash, Identity, Private}, process::{Handle, Mailbox, Message, Process}, protocol::{Amount, Open, Slot, Task, Transaction, Verified}, util::Error};
+use crate::{error, keys::{Hash, Identity, Private}, process::{self, Handle, Mailbox, Message, Process}, protocol::{Amount, Open, Slot, Task, Transaction, Verified}, util::Error};
 
 use super::{Bank, Block, Dag};
 
@@ -18,7 +17,7 @@ pub struct State {
     /// Are we in leader mode?
     leader_mode: bool,
     /// The account state of the longest chain
-    bank: Arc<Mutex<Bank>>,
+    bank: Arc<Bank>,
     /// All finalized blocks
     finalized: Vec<Arc<Block>>,
     /// Last finalized block (root) plus all blocks that are not yet finalized
@@ -50,7 +49,7 @@ impl State {
             cur_opens: None
         })
     }
-    pub fn finalize_hash(&mut self, h: Hash) -> Result<(), Error> {
+    /*pub fn finalize_hash(&mut self, h: Hash) -> Result<(), Error> {
         // find the common ancestor of the longest chain and the block to finalize
         let (&longest_chain, _) = self.active.get_longest_chain();
         let common_ancestor = *self.active.get_common_ancestor(h, longest_chain).unwrap().0;
@@ -236,7 +235,7 @@ impl State {
                 .unzip();
             send.send((txs, tx_hashes, tasks)).unwrap();
         });
-        let (txs, tx_hashes, tasks) = recv.await.unwrap();
+        let (txs, tx_hashes, tasks) = recv.unwrap();
         let (send, recv) = oneshot::channel();
         let bank = self.bank.clone();
         rayon::spawn(move || {
@@ -246,7 +245,7 @@ impl State {
             });
             send.send(tasks).unwrap();
         });
-        let tasks = recv.await.unwrap();
+        let tasks = recv.unwrap();
         
         // Create our block
         let block = Block::sign(
@@ -262,14 +261,18 @@ impl State {
         );
         self.add_block(Arc::new(block), tasks);
         Ok(())
-    }
+    }*/
 }
 
 impl Process for State {
     const NAME: &'static str = "State";
-    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    const RESTART_ON_CRASH: bool = true;
+    fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
         loop {
-            let msg = mailbox.recv().await;
+            process::sleep(Duration::from_secs(1));
+        }
+        /*loop {
+            let msg = mailbox.recv();
             match msg {
                 Message::TransactionList(v) => {
                     let (slot, txs) = *v;
@@ -293,6 +296,6 @@ impl Process for State {
                 },
                 _ => {}
             }
-        }
+        }*/
     }
 }

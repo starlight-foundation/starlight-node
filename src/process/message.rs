@@ -1,8 +1,9 @@
-use crate::{network::{ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::{RpcRequest, RpcResponse}, static_assert};
+use std::sync::Arc;
+
+use crate::{network::{Endpoint, ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::{RpcRequest, RpcResponse}, static_assert};
 
 use super::Handle;
 
-#[derive(Clone)]
 pub enum Message {
     // Leader mode messages
     StartLeaderMode,
@@ -26,7 +27,13 @@ pub enum Message {
     
     // RPC
     RpcRequest(Box<(Handle, u64, RpcRequest)>),
-    RpcResponse(Box<(u64, RpcResponse)>)
+    RpcResponse(Box<(u64, RpcResponse)>),
+
+    // Broadcast
+    Broadcast(Box<(Arc<Vec<Endpoint>>, Vec<u8>)>),
+
+    // Tick
+    Tick
 }
 
 static_assert!(std::mem::size_of::<Message>() == 16);

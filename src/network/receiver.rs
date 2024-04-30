@@ -33,14 +33,16 @@ impl Receiver {
 
 impl Process for Receiver {
     const NAME: &'static str = "Receiver";
+    const RESTART_ON_CRASH: bool = true;
+
     // Run the receiver
-    async fn run(&mut self, _: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    fn run(&mut self, _: &mut Mailbox, _: Handle) -> Result<(), Error> {
         let socket = self.socket.clone();
 
         // Spawn a task to receive notes from the socket
         let mut buf = Vec::default_init(MTU);
         loop {
-            let n = match socket.recv_from(&mut buf).await {
+            let n = match socket.recv_from(&mut buf) {
                 Ok((n, _)) => n,
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {
@@ -56,16 +58,16 @@ impl Process for Receiver {
             };
             match note {
                 Note::TelemetryNote(tel_note) => {
-                    self.transmitter.send(Message::TelemetryNote(tel_note)).await;
+                    self.transmitter.send(Message::TelemetryNote(tel_note));
                 }
                 Note::ShredNote(shred_note) => {
-                    self.assembler.send(Message::ShredNote(shred_note)).await;
+                    self.assembler.send(Message::ShredNote(shred_note));
                 }
                 Note::Transaction(tx) => {
-                    self.tx_pool.send(Message::Transaction(tx)).await;
+                    self.tx_pool.send(Message::Transaction(tx));
                 }
                 Note::Open(open) => {
-                    self.open_pool.send(Message::Open(open)).await;
+                    self.open_pool.send(Message::Open(open));
                 }
             }
         }

@@ -56,10 +56,13 @@ impl Process for RpcServer {
         for stream in self.listener.incoming() {
             let stream = match stream {
                 Ok(stream) => stream,
-                Err(e) if is_tcp_fatal(e.kind()) => return Err(e),
+                Err(e) if is_tcp_fatal(e.kind()) => return Err(e.into()),
                 _ => continue
             };
-            let rpc_sender = process::spawn(RpcSender::new(self.destination.clone()));
+            let rpc_sender = process::spawn(RpcSender::new(match stream.try_clone() {
+                Ok(stream) => stream,
+                Err(_) => continue
+            }));
             process::spawn(RpcReceiver::new(
                 self.destination.clone(),
                 rpc_sender,

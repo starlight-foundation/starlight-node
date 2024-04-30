@@ -1,9 +1,8 @@
-use super::Hash;
 // Derived from the keys module of github.com/feeless/feeless@978eba7.
 use crate::hexify;
 use crate::keys::private::Private;
+use bincode::{Decode, Encode};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 
 use blake2b_simd::Params;
 
@@ -17,7 +16,7 @@ static BLAKE2B_PARAMS: Params = {
 /// 256 bit seed used to derive multiple addresses.
 ///
 /// See https://docs.nano.org/integration-guides/the-basics/#seed for details.
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Encode, Decode)]
 pub struct Seed(pub [u8; 32]);
 
 hexify!(Seed, "seed");

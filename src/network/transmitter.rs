@@ -1,18 +1,9 @@
-use std::{sync::Arc, time::Duration};
+use std::{net::UdpSocket, sync::Arc, time::Duration};
 
 use rand::Rng;
-use serde::{Deserialize, Serialize};
-use tokio::{
-    net::UdpSocket,
-    sync::mpsc::{UnboundedReceiver, UnboundedSender},
-};
 
 use crate::{
-    error,
-    keys::{Identity, Private, Public, Signature},
-    protocol::{Amount, Slot, Transaction},
-    util::{self, DefaultInitVec, Error, UninitVec, Version},
-    process::{Handle, Mailbox, Message, Process},
+    error, keys::{Identity, Private, Public, Signature}, process::{self, Handle, Mailbox, Message, Process, ProcessInfallible}, protocol::{Amount, Slot, Transaction}, util::{self, DefaultInitVec, Error, Ticker, UninitVec, Version}
 };
 
 use super::{models::TelemetryNote, CenterMap, Endpoint, Note, Peer, Shred, ShredNote};
@@ -45,7 +36,8 @@ pub struct Transmitter {
     version: Version,
     allow_peers_with_private_ip_addresses: bool,
     allow_peers_with_node_external_ip_address: bool,
-    peers: CenterMap<Public, Amount, Peer>
+    peers: CenterMap<Public, Amount, Peer>,
+    broadcaster: Handle
 }
 
 impl Transmitter {
@@ -60,6 +52,7 @@ impl Transmitter {
         version: Version,
         allow_peers_with_private_ip_addresses: bool,
         allow_peers_with_node_external_ip_address: bool,
+        broadcaster: Handle
     ) -> Self {
         let weight = get_weight(&id.public);
         Self {
@@ -74,11 +67,12 @@ impl Transmitter {
             allow_peers_with_private_ip_addresses,
             allow_peers_with_node_external_ip_address,
             peers: CenterMap::new(weight, max_less, max_greater),
+            broadcaster
         }
     }
 
     // Broadcast a message to a subset of peers using fanout
-    fn broadcast_fanout(&mut self, msg: Arc<Vec<u8>>) {
+    fn broadcast_fanout(&mut self, msg: Vec<u8>) {
         let mut peer_count = self.peers.len();
         let mut broadcast_left = fanout(peer_count);
         let mut endpoints = Vec::with_capacity(broadcast_left);
@@ -95,23 +89,18 @@ impl Transmitter {
             endpoints.push(peer.endpoint);
             broadcast_left -= 1;
         }
-        let socket = self.socket.clone();
-        tokio::spawn(async move {
-            for endpoint in endpoints.iter() {
-                _ = socket.send_to(&msg, endpoint.to_socket_addr()).await;
-            }
-        });
+        self.broadcaster.send(Message::Broadcast(
+            Box::new((Arc::new(endpoints), msg))
+        ));
     }
 
     // Broadcast a message to initial peers
-    fn broadcast_initial_peers(&self, bytes: Arc<Vec<u8>>) {
+    fn broadcast_initial_peers(&self, bytes: Vec<u8>) {
         let socket = self.socket.clone();
         let initial_peers = self.initial_peers.clone();
-        tokio::spawn(async move {
-            for logical in initial_peers.iter() {
-                _ = socket.send_to(&bytes, logical.to_socket_addr()).await;
-            }
-        });
+        self.broadcaster.send(Message::Broadcast(
+            Box::new((initial_peers, bytes))
+        ));
     }
 
     // Send telemetry messages at regular intervals
@@ -127,7 +116,7 @@ impl Transmitter {
             self.version,
         ));
         let msg = Note::TelemetryNote(tel_note);
-        let bytes = Arc::new(msg.serialize(MTU));
+        let bytes = msg.serialize(MTU);
 
         // Broadcast the telemetry message to initial peers or a subset of peers
         if self.peers.is_empty() {
@@ -191,8 +180,8 @@ impl Transmitter {
 
         // Broadcast the telemetry message to other peers if necessary
         if should_broadcast {
-            let msg = Note::TelemetryNote(tel_note);
-            let bytes = Arc::new(msg.serialize(MTU));
+            let note = Note::TelemetryNote(tel_note);
+            let bytes = note.serialize(MTU);
             self.broadcast_fanout(bytes);
         }
     }
@@ -202,7 +191,7 @@ impl Transmitter {
             // Shred notes sent back from `Restorer`
             Message::ShredNote(shred_note) => {
                 // Broadcast the shred message to a subset of peers
-                let bytes = Arc::new(Note::ShredNote(shred_note).serialize(MTU));
+                let bytes = Note::ShredNote(shred_note).serialize(MTU);
                 self.broadcast_fanout(bytes);
             },
             Message::TelemetryNote(tel_note) => {
@@ -213,21 +202,13 @@ impl Transmitter {
     }
 }
 
-impl Process for Transmitter {
-    const NAME: &'static str = "Transmitter";
+impl ProcessInfallible for Transmitter {
     // Run the transmitter
-    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
-        // Spawn a task to send messages at an interval
-        let mut interval = tokio::time::interval(Duration::from_secs(PEER_UPDATE_INTERVAL));
+    fn run(&mut self, mut mailbox: Mailbox, handle: Handle) -> ! {
+        // Spawn a process to send messages at an interval
+        process::spawn_infallible(Ticker::new(handle, Duration::from_secs(PEER_UPDATE_INTERVAL)));
         loop {
-            tokio::select! {
-                msg = mailbox.recv() => {
-                    self.on_msg(msg).await;
-                },
-                _ = interval.tick() => {
-                    self.on_interval();
-                }
-            }
+            self.on_msg(mailbox.recv());
         }
     }
 }

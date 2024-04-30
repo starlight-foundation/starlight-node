@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Encode, Decode)]
 pub struct Version {
     major: u16,
     minor: u16,

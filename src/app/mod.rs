@@ -2,7 +2,7 @@ mod config;
 #[macro_use]
 pub mod log;
 
-use crate::network::{Assembler, Endpoint, Receiver, Transmitter};
+use crate::network::{Assembler, Broadcaster, Endpoint, Receiver, Transmitter};
 use crate::process;
 use crate::protocol::Amount;
 use crate::rpc::RpcServer;
@@ -13,7 +13,8 @@ use crate::{
     util::{Error, Version},
 };
 use config::Config;
-use std::net::UdpSocket;
+use nanoserde::{DeJson, SerJson};
+use std::net::{TcpListener, UdpSocket};
 use std::sync::Arc;
 use std::{
     fs::{self, File},
@@ -21,14 +22,16 @@ use std::{
 };
 
 const VERSION: Version = Version::new(0, 1, 0);
-const CONFIG_FILE: &str = "config.toml";
+const CONFIG_FILE: &str = "config.json";
 
-pub async fn start() {
+pub fn start() {
     log_info!("Starting Starlight node version {}", VERSION);
+    
+    // Initialize the configuration for the Starlight node
     let config = match fs::read_to_string(CONFIG_FILE) {
         Ok(config) => {
             log_info!("Loaded config from {}", CONFIG_FILE);
-            match serde_json::from_str(&config) {
+            match DeJson::deserialize_json(&config) {
                 Ok(config) => config,
                 Err(e) => {
                     log_error!("Failed to parse config: {}", e);
@@ -40,7 +43,7 @@ pub async fn start() {
             let config = Config::new();
             match (|| -> Result<(), Error> {
                 let mut f = File::create(CONFIG_FILE)?;
-                f.write_all(serde_json::to_string(&config).unwrap().as_bytes())?;
+                f.write_all(SerJson::serialize_json(&config).as_bytes())?;
                 Ok(())
             })() {
                 Ok(_) => {
@@ -53,15 +56,16 @@ pub async fn start() {
             config
         }
     };
+
+    // Derive node identity from the configuration
     let private = config.node_seed.derive(0);
     let public = private.to_public();
     log_info!("Using public key {}", public);
     log_info!("Using address {}", public.to_address());
-    let rpc = RpcServer::new(config.rpc_endpoint);
-    process::spawn(rpc);
-    log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
+
+    // Setup network identity and UDP socket for communication
     let id = Identity { private, public };
-    let socket = match UdpSocket::bind(
+    let network_socket = Arc::new(match UdpSocket::bind(
         config.node_bind_endpoint.to_socket_addr()
     ) {
         Ok(socket) => socket,
@@ -69,10 +73,14 @@ pub async fn start() {
             log_error!("Failed to bind to {}: {}", config.node_bind_endpoint, e);
             std::process::exit(1);
         }
-    };
-    let socket = Arc::new(socket);
-    let transmitter = process::spawn(Transmitter::new(
-        socket.clone(),
+    });
+
+    // Start the network broadcaster and transmitter process
+    let broadcaster = process::spawn_infallible(Broadcaster::new(
+        network_socket.clone()
+    ));
+    let transmitter = process::spawn_infallible(Transmitter::new(
+        network_socket.clone(),
         config.node_external_endpoint,
         id,
         Arc::new(config.initial_peers),
@@ -82,9 +90,12 @@ pub async fn start() {
         VERSION,
         config.allow_peers_with_private_ip_addresses,
         config.allow_peers_with_node_external_ip_address,
+        broadcaster
     ));
-    let genesis = Block::genesis(private);
-    let state = match State::new(
+
+    // Initialize blockchain state
+    let genesis = Block::genesis(id);
+    let state = process::spawn(match State::new(
         id,
         &config.data_dir,
         Arc::new(genesis)
@@ -94,13 +105,30 @@ pub async fn start() {
             log_error!("Failed to create state: {}", e);
             std::process::exit(1);
         }
+    });
+
+    // Initialize and start the RPC server
+    let rpc_socket = match TcpListener::bind(
+        config.rpc_endpoint.to_socket_addr()
+    ) {
+        Ok(socket) => socket,
+        Err(e) => {
+            log_error!("Failed to bind to {}: {}", config.rpc_endpoint, e);
+            std::process::exit(1);
+        }
     };
-    let state = process::spawn(state);
+    let rpc = RpcServer::new(state.clone(), rpc_socket);
+    process::spawn(rpc);
+    log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
+    
+    // Initialize transaction pools and assembler
     let tx_pool = process::spawn(TxPool::new(config.tx_pool_size, state.clone()));
     let open_pool = process::spawn(OpenPool::new(config.open_pool_size, state));
     let assembler = process::spawn(Assembler::new());
+
+    // Start the network receiver process
     process::spawn(Receiver::new(
-        socket,
+        network_socket,
         transmitter,
         assembler,
         tx_pool,
@@ -112,6 +140,6 @@ pub async fn start() {
         config.node_external_endpoint
     );
     if config.node_external_endpoint.addr == [127, 0, 0, 1] {
-        log_warn!("SLP external endpoint is localhost; this node will not be able to communicate over the Internet");
+        log_warn!("SLP external endpoint is localhost; this node will not be able to communicate over the network");
     }
 }

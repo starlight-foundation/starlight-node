@@ -4,40 +4,29 @@ mod error;
 mod merkle;
 mod version;
 mod atomic;
+mod ticker;
 
+use std::io::Write;
+
+use bincode::{enc::write::Writer, error::{DecodeError, EncodeError}, Decode, Encode};
 use bitvec::{order::BitOrder, store::BitStore, vec::BitVec};
-use heed::bytemuck::Pod;
-use rayon::iter::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
-use serde::{de::DeserializeOwned, Serialize};
 
 pub use archived::{ArchivableTo, Archived};
 pub use encoding::{
-    deserialize_from_str, deserialize_from_string, deserialize_list_from_str,
-    deserialize_list_from_string, expect_len, serialize_list_to_display, serialize_to_display,
+    expect_len,
     to_hex, to_hex_lower,
 };
 pub use error::Error;
 pub use merkle::{merkle_root, merkle_root_direct};
 pub use version::Version;
 pub use atomic::Atomic;
+pub use ticker::Ticker;
 
 #[macro_export]
 macro_rules! static_assert {
     ($($tt:tt)*) => {
         const _: () = assert!($($tt)*);
     }
-}
-
-pub fn serialize_into<T: Serialize>(buf: &mut Vec<u8>, value: &T) {
-    bincode::serialize_into(buf, value).unwrap()
-}
-
-pub fn serialize<T: Serialize>(value: &T) -> Vec<u8> {
-    bincode::serialize(value).unwrap()
-}
-
-pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
-    bincode::deserialize(bytes).map_err(Into::into)
 }
 
 pub trait UninitVec<T: Copy> {
@@ -49,6 +38,14 @@ pub trait UninitVec<T: Copy> {
 }
 
 impl<T: Copy> UninitVec<T> for Vec<T> {}
+
+pub fn encode_into_writer<W: Write, E: Encode>(w: &mut W, e: &E) -> Result<(), EncodeError> {
+    bincode::encode_into_std_write(e, w, bincode::config::standard())?;
+    Ok(())
+}
+pub fn decode_from_slice<D: Decode>(slice: &[u8]) -> Result<D, DecodeError> {
+    bincode::decode_from_slice(slice, bincode::config::standard()).map(|x| x.0)
+}
 
 pub trait UninitBitVec<T: BitStore, O: BitOrder> {
     unsafe fn uninit(len: usize) -> BitVec<T, O> {
@@ -83,12 +80,4 @@ pub const unsafe fn view_as_value<T: Copy>(bytes: &[u8]) -> Result<&T, ()> {
     return Ok(unsafe {
         &*(bytes.as_ptr() as *const T)
     })
-}
-
-pub fn parallel_map<T, F: Fn(&T) -> U, U>(x: Vec<T>, f: F) -> Vec<U> {
-    let mut y = Vec::with_capacity(x.len());
-    for i in 0..x.len() {
-        y.push(f(x[i]));
-    }
-    y
 }

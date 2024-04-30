@@ -9,7 +9,7 @@ pub struct Atomic<T: ArchivableTo<u64>> {
 }
 
 impl<T: ArchivableTo<u64>> Atomic<T> {
-    pub const fn new(v: T) -> Self {
+    pub fn new(v: T) -> Self {
         Self {
             value: AtomicU64::new(v.archive()),
             _phantom: PhantomData,

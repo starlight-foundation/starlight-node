@@ -13,8 +13,8 @@ impl<K: Pod, V: Pod> Database<K, V> {
         fs::create_dir_all(directory)?;
         let env = EnvOpenOptions::new().open(directory)?;
         Ok(Self {
-            env,
-            db: env.create_database(None)?
+            db: env.create_database(None)?,
+            env
         })
     }
     pub fn len(&self) -> u64 {

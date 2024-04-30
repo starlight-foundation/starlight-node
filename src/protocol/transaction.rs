@@ -5,14 +5,14 @@ use crate::{
 };
 
 use super::{Amount, Verifiable};
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 
 /// A transaction, either a normal or change representative transaction.
 /// When `amount` != `Amount::zero()`:
 /// - Funds equal to `amount` are transferred from `from` to `to`.
 /// Else:
 /// - The representative of `from` is changed to `to`.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Encode, Decode, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Transaction {
     pub nonce: u64,

@@ -1,5 +1,7 @@
 use std::time::SystemTime;
 
+use crate::process;
+
 use super::Slot;
 
 /// Represents a clock that manages and emits the current slot number based on system time.
@@ -17,7 +19,7 @@ impl Clock {
     }
 
     /// Returns the current slot number, never returning the same slot twice.
-    pub async fn tick(&mut self) -> Slot {
+    pub fn tick(&mut self) -> Slot {
         let now = SystemTime::now();
         let cur_slot = Slot::from_system_time(now);
 
@@ -32,7 +34,7 @@ impl Clock {
         let til_next = next_slot.to_system_time().duration_since(now).unwrap();
 
         // Sleep until the next slot time is reached.
-        tokio::time::sleep(til_next).await;
+        process::sleep(til_next);
 
         // Update the last emitted slot to the next slot and return it.
         self.last_emitted = next_slot;

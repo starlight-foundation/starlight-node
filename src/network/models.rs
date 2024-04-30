@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 
 use crate::{
     error,
@@ -9,7 +9,7 @@ use crate::{
 
 use super::{center_map::CenterMapValue, endpoint::Endpoint, shred::Shred};
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Encode, Decode, Clone, Copy)]
 #[repr(C)]
 pub struct Peer {
     pub weight: Amount,
@@ -23,7 +23,7 @@ impl CenterMapValue<Amount> for Peer {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Encode, Decode, Clone, Copy)]
 #[repr(C)]
 pub struct TelemetryNote {
     pub from: Public,
@@ -63,7 +63,7 @@ impl TelemetryNote {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Encode, Decode, Clone)]
 #[repr(C)]
 pub struct ShredNote {
     pub from: Public,
@@ -86,7 +86,7 @@ impl ShredNote {
 
 const MAGIC_NUMBER: [u8; 7] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa];
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Encode, Decode, Clone)]
 pub enum Note {
     TelemetryNote(Box<TelemetryNote>),
     ShredNote(Box<ShredNote>),
@@ -97,7 +97,7 @@ impl Note {
     pub fn serialize(&self, mtu: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(mtu);
         bytes.extend_from_slice(&MAGIC_NUMBER);
-        util::serialize_into(&mut bytes, self);
+        util::encode_into_writer(&mut bytes, self).unwrap();
         bytes
     }
     pub fn deserialize(bytes: &[u8], mtu: usize) -> Result<Self, Error> {
@@ -110,7 +110,7 @@ impl Note {
         if bytes.len() > mtu {
             return Err(error!("message too large"));
         }
-        util::deserialize(&bytes[8..]).or_else(|_| {
+        util::decode_from_slice(&bytes[8..]).or_else(|_| {
             return Err(error!("invalid message"));
         })
     }

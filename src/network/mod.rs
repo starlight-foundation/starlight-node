@@ -6,6 +6,7 @@ mod transmitter;
 mod receiver;
 mod shred;
 mod assembler;
+mod broadcaster;
 
 use center_map::{CenterMap, CenterMapValue};
 use compress::{compress, decompress};
@@ -17,3 +18,4 @@ pub use transmitter::{Transmitter, MTU};
 pub use receiver::Receiver;
 pub use models::{ShredNote, TelemetryNote};
 pub use assembler::Assembler;
+pub use broadcaster::Broadcaster;

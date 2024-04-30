@@ -1,13 +1,13 @@
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 
 use crate::util::ArchivableTo;
 
 const RAW_PER_UNIT: u64 = 10_000_000_000;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 pub struct Amount(u64);
 
 impl ArchivableTo<u64> for Amount {

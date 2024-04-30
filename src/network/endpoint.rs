@@ -1,11 +1,12 @@
-use std::{array::IntoIter, fmt::Display, net::Ipv4Addr, str::FromStr};
+use std::{array::IntoIter, fmt::Display, net::Ipv4Addr, str::{Chars, FromStr}};
 
-use nanoserde::{DeJson, SerJson};
+use bincode::{Decode, Encode};
+use nanoserde::{DeJson, DeJsonErr, DeJsonState, SerJson, SerJsonState};
 
 use crate::{error, util::Error};
 
 /// An ipv4 endpoint
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Encode, Decode)]
 pub struct Endpoint {
     pub addr: [u8; 4],
     pub port: u16,
@@ -77,14 +78,18 @@ impl FromStr for Endpoint {
 }
 
 impl SerJson for Endpoint {
-    fn ser_json(&self, s: &mut serde_json::Serializer) -> Result<(), serde_json::Error> {
-        s.ser_str(self.to_string())
+    fn ser_json(&self, d: usize, s: &mut SerJsonState) {
+        self.to_string().ser_json(d, s)
     }
 }
 
 impl DeJson for Endpoint {
-    fn de_json(d: &mut serde_json::Deserializer) -> Result<Self, serde_json::Error> {
-        let s = d.de_str()?;
-        Self::from_str(s)
+    fn de_json(state: &mut DeJsonState, input: &mut Chars) -> Result<Self, DeJsonErr> {
+        let s = String::de_json(state, input)?;
+        Self::from_str(&s).map_err(|e| DeJsonErr {
+            msg: e.to_string(),
+            line: state.line,
+            col: state.col
+        })
     }
 }

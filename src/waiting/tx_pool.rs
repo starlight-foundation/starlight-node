@@ -35,9 +35,11 @@ impl TxPool {
 
 impl Process for TxPool {
     const NAME: &'static str = "TxPool";
-    async fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
+    const RESTART_ON_CRASH: bool = true;
+
+    fn run(&mut self, mailbox: &mut Mailbox, _: Handle) -> Result<(), Error> {
         loop {
-            match mailbox.recv().await {
+            match mailbox.recv() {
                 Message::StartLeaderMode => self.leader_mode = true,
                 Message::EndLeaderMode => {
                     self.pool.clear();
@@ -53,7 +55,7 @@ impl Process for TxPool {
                 },
                 Message::NewLeaderSlot(slot) => {
                     let txs = self.pool.drain(|x| x.0);
-                    self.state.send(Message::TransactionList(Box::new((slot, txs)))).await;
+                    self.state.send(Message::TransactionList(Box::new((slot, txs))));
                 },
                 _ => {}
             }

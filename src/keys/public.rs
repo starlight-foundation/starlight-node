@@ -5,17 +5,17 @@ use crate::bail;
 use crate::error;
 use crate::hexify;
 use crate::util::Error;
+use bincode::Decode;
+use bincode::Encode;
 use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
 use heed::bytemuck::Pod;
 use heed::bytemuck::Zeroable;
 use primitive_types::U512;
-use serde::Serialize;
-use serde::{Deserialize, Deserializer, Serializer};
 
 /// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Encode, Decode, Default)]
 #[repr(align(8))]
 pub struct Public([u8; 32]);
 
@@ -175,24 +175,6 @@ impl From<PublicKey> for Public {
     fn from(v: PublicKey) -> Self {
         Self(*v.as_bytes())
     }
-}
-
-/// A serde serializer that converts to an address instead of public key hexes.
-///
-/// Use with #[serde(serialize_with = "to_address")] on the field that needs it.
-pub fn to_address<S>(public: &Public, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(public.to_address().to_string().as_str())
-}
-
-pub fn from_address<'de, D>(deserializer: D) -> Result<Public, <D as Deserializer<'de>>::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    Ok(Public::from_address(s).map_err(serde::de::Error::custom)?)
 }
 
 #[cfg(test)]

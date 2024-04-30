@@ -1,13 +1,13 @@
 use std::time::{Duration, Instant, SystemTime};
 
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 
 use super::Epoch;
 
 const GENESIS_TIME_MS: u64 = 1710290840 * 1000;
 const SLOT_TIME_MS: u64 = 500;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Encode, Decode, Default)]
 pub struct Slot(pub(super) u64);
 impl Slot {
     pub fn zero() -> Slot {

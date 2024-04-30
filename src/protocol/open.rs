@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
+use bincode::{Encode, Decode};
 
 use crate::{keys::{Difficulty, Hash, Public, Signature, Work}, util::{self, Error}};
 
 use super::Verifiable;
 
 #[repr(C)]
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Encode, Decode, Clone, Copy)]
 pub struct Open {
     pub account: Public,
     pub representative: Public,

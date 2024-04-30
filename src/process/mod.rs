@@ -1,7 +1,6 @@
 mod message;
 pub use message::Message;
 
-use std::future::Future;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 use std::time::Duration;
@@ -9,13 +8,22 @@ use crate::util::Error;
 use crate::{log_error, log_warn};
 
 const BUF_SIZE: usize = 1024;
-const SLEEP_MS_BEFORE_RETRY: usize = 20;
+const SLEEP_MS_BEFORE_RETRY: u64 = 20;
+
+pub fn sleep(dur: Duration) {
+    std::thread::sleep(dur);
+}
 
 pub struct Mailbox(Receiver<Message>);
 
 impl Mailbox {
-    pub async fn recv(&mut self) -> Message {
-        self.0.recv().expect("process has been forgotten!")
+    pub fn recv(&mut self) -> Message {
+        match self.0.recv() {
+            Ok(msg) => msg,
+            Err(_) => loop {
+                sleep(Duration::from_secs(1));
+            }
+        }
     }
 }
 
@@ -23,8 +31,8 @@ impl Mailbox {
 pub struct Handle(SyncSender<Message>);
 
 impl Handle {
-    pub async fn send(&self, msg: Message) {
-        let _ = self.0.send(msg).await;
+    pub fn send(&self, msg: Message) {
+        _ = self.0.send(msg);
     }
 }
 
@@ -34,12 +42,12 @@ pub trait Process {
     fn run(&mut self, mailbox: &mut Mailbox, handle: Handle) -> Result<(), Error>;
 }
 
-pub fn spawn<P: Process + Send>(process: P) -> Handle {
+pub fn spawn<P: Process + Send + 'static>(mut process: P) -> Handle {
     let (tx, rx) = sync_channel(BUF_SIZE);
     let handle = Handle(tx.clone());
     thread::spawn(move || {
         let handle = Handle(tx);
-        let mailbox = Mailbox(rx);
+        let mut mailbox = Mailbox(rx);
         loop {
             match process.run(&mut mailbox, handle.clone()) {
                 Ok(_) => break,
@@ -53,6 +61,21 @@ pub fn spawn<P: Process + Send>(process: P) -> Handle {
                 }
             }
         }
+    });
+    handle
+}
+
+pub trait ProcessInfallible {
+    fn run(&mut self, mailbox: Mailbox, handle: Handle) -> !;
+}
+
+pub fn spawn_infallible<P: ProcessInfallible + Send + 'static>(mut process: P) -> Handle {
+    let (tx, rx) = sync_channel(BUF_SIZE);
+    let handle = Handle(tx.clone());
+    thread::spawn(move || {
+        let handle = Handle(tx);
+        let mailbox = Mailbox(rx);
+        process.run(mailbox, handle);
     });
     handle
 }

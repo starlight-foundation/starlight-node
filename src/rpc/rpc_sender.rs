@@ -1,6 +1,6 @@
 use std::{io::Write, net::TcpStream};
 
-use crate::{process::{Handle, Mailbox, Message, Process}, util::Error};
+use crate::{process::{Handle, Mailbox, Message, Process}, util::{self, Error}};
 
 use super::RpcResponse;
 
@@ -25,10 +25,11 @@ impl Process for RpcSender {
                 Message::RpcResponse(v) => v,
                 _ => continue
             };
-            let (id, response): (u64, RpcResponse) = rpc_response;
+            let (id, response): (u64, RpcResponse) = *rpc_response;
             buf.extend_from_slice(&0u32.to_le_bytes());
-            bincode::serialize_into(&mut buf, &response);
-            buf[0..4] = (buf.len() as u32 - 4).to_le_bytes();
+            util::encode_into_writer(&mut buf, &response).unwrap();
+            let len_bytes = (buf.len() as u32 - 4).to_le_bytes();
+            buf[0..4].copy_from_slice(&len_bytes);
             self.stream.write_all(&buf)?;
         }
     }

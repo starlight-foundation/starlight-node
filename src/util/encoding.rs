@@ -2,7 +2,6 @@
 use crate::util::Error;
 use crate::{bail, error};
 use bitvec::prelude::*;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, UpperHex};
 use std::str::FromStr;
 
@@ -34,75 +33,6 @@ pub fn hex_formatter_lower(f: &mut std::fmt::Formatter<'_>, bytes: &[u8]) -> std
         write!(f, "{:02x}", byte)?;
     }
     Ok(())
-}
-
-pub fn serialize_to_display<T: Display, S>(v: &T, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let s = format!("{}", v);
-    serializer.serialize_str(s.as_str())
-}
-
-pub fn deserialize_from_str<'de, T, D>(
-    deserializer: D,
-) -> Result<T, <D as Deserializer<'de>>::Error>
-where
-    D: Deserializer<'de>,
-    T: FromStr,
-    <T as std::str::FromStr>::Err: std::fmt::Display,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    Ok(T::from_str(s).map_err(serde::de::Error::custom)?)
-}
-
-pub fn serialize_list_to_display<T, S>(values: &[T], serializer: S) -> Result<S::Ok, S::Error>
-where
-    T: Display,
-    S: Serializer,
-{
-    let strings: Vec<String> = values.iter().map(|value| value.to_string()).collect();
-    strings.serialize(serializer)
-}
-
-pub fn deserialize_list_from_str<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    T: FromStr,
-    T::Err: Display,
-    D: Deserializer<'de>,
-{
-    let strings: Vec<String> = Vec::deserialize(deserializer)?;
-    let values = strings
-        .into_iter()
-        .map(|s| s.parse().map_err(serde::de::Error::custom))
-        .collect::<Result<Vec<T>, _>>()?;
-    Ok(values)
-}
-
-pub fn deserialize_list_from_string<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    T: FromStr,
-    T::Err: Display,
-    D: Deserializer<'de>,
-{
-    let strings: Vec<String> = Deserialize::deserialize(deserializer)?;
-    let values = strings
-        .into_iter()
-        .map(|s| s.parse().map_err(serde::de::Error::custom))
-        .collect::<Result<Vec<T>, _>>()?;
-    Ok(values)
-}
-
-pub fn deserialize_from_string<'de, T, D>(
-    deserializer: D,
-) -> Result<T, <D as Deserializer<'de>>::Error>
-where
-    D: Deserializer<'de>,
-    T: FromStr,
-    <T as std::str::FromStr>::Err: std::fmt::Display,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    Ok(T::from_str(s.as_str()).map_err(serde::de::Error::custom)?)
 }
 
 static ALPHABET: &str = "13456789abcdefghijkmnopqrstuwxyz";
@@ -219,6 +149,25 @@ macro_rules! hexify {
                 write!(f, "{}", self.as_hex_lower())
             }
         }
+
+        impl nanoserde::SerJson for $struct {
+            fn ser_json(&self, d: usize, s: &mut nanoserde::SerJsonState) {
+                self.to_string().ser_json(d, s)
+            }
+        }
+        
+        impl nanoserde::DeJson for $struct {
+            fn de_json(state: &mut nanoserde::DeJsonState, input: &mut std::str::Chars) -> Result<Self, nanoserde::DeJsonErr> {
+                use std::str::FromStr;
+                let s = String::de_json(state, input)?;
+                Self::from_str(&s).map_err(|e| nanoserde::DeJsonErr {
+                    msg: e.to_string(),
+                    line: state.line,
+                    col: state.col
+                })
+            }
+        }
+        
     };
 }
 

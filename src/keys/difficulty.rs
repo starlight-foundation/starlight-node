@@ -1,12 +1,13 @@
 // Derived from the pow module of github.com/feeless/feeless@978eba7.
+use bincode::{Decode, Encode};
 use crate::error;
 use crate::util::Error;
-use crate::util::{deserialize_from_str, expect_len, to_hex};
+use crate::util::{expect_len, to_hex};
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use std::str::FromStr;
 
-#[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord)]
+#[derive(Eq, PartialEq, Clone, Copy, PartialOrd, Ord, Decode, Encode)]
 pub struct Difficulty(u64);
 
 impl Difficulty {
