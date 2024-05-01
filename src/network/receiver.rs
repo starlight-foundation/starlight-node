@@ -1,14 +1,13 @@
 use std::{sync::Arc, net::UdpSocket};
-
 use crate::{process::{Handle, Mailbox, Message, Process}, util::{DefaultInitVec, Error}};
-
 use super::{models::Note, MTU};
+use rand::seq::SliceRandom;
 
 pub struct Receiver {
     socket: Arc<UdpSocket>,
     transmitter: Handle,
     assembler: Handle,
-    tx_pool: Handle,
+    tx_pools: Vec<Handle>,
     open_pool: Handle,
 }
 
@@ -18,14 +17,14 @@ impl Receiver {
         socket: Arc<UdpSocket>, 
         transmitter: Handle,
         assembler: Handle,
-        tx_pool: Handle,
+        tx_pools: Vec<Handle>,
         open_pool: Handle,
     ) -> Self {
         Self {
             socket,
             transmitter,
             assembler,
-            tx_pool,
+            tx_pools,
             open_pool,
         }
     }
@@ -64,7 +63,9 @@ impl Process for Receiver {
                     self.assembler.send(Message::ShredNote(shred_note));
                 }
                 Note::Transaction(tx) => {
-                    self.tx_pool.send(Message::Transaction(tx));
+                    self.tx_pools.choose(&mut rand::thread_rng()).unwrap().send(
+                        Message::Transaction(tx)
+                    );
                 }
                 Note::Open(open) => {
                     self.open_pool.send(Message::Open(open));

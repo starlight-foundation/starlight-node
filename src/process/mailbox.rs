@@ -16,4 +16,7 @@ impl Mailbox {
             }
         }
     }
+    pub fn recv_timeout(&mut self, timeout: Duration) -> Option<Message> {
+        self.0.recv_timeout(timeout).ok()
+    }
 }

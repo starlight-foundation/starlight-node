@@ -3,8 +3,8 @@ mod config;
 pub mod log;
 
 use crate::network::{Assembler, Broadcaster, Endpoint, Receiver, Transmitter};
-use crate::process;
-use crate::protocol::Amount;
+use crate::process::{self, Handle};
+use crate::protocol::{Amount, Scheduler};
 use crate::rpc::RpcServer;
 use crate::state::{Block, State};
 use crate::waiting::{OpenPool, TxPool};
@@ -15,7 +15,9 @@ use crate::{
 use config::Config;
 use nanoserde::{DeJson, SerJson};
 use std::net::{TcpListener, UdpSocket};
+use std::process::exit;
 use std::sync::Arc;
+use std::thread;
 use std::{
     fs::{self, File},
     io::Write
@@ -71,7 +73,7 @@ pub fn start() {
         Ok(socket) => socket,
         Err(e) => {
             log_error!("Failed to bind to {}: {}", config.node_bind_endpoint, e);
-            std::process::exit(1);
+            exit(1);
         }
     });
 
@@ -103,7 +105,7 @@ pub fn start() {
         Ok(state) => state,
         Err(e) => {
             log_error!("Failed to create state: {}", e);
-            std::process::exit(1);
+            exit(1);
         }
     });
 
@@ -114,16 +116,26 @@ pub fn start() {
         Ok(socket) => socket,
         Err(e) => {
             log_error!("Failed to bind to {}: {}", config.rpc_endpoint, e);
-            std::process::exit(1);
+            exit(1);
         }
     };
     let rpc = RpcServer::new(state.clone(), rpc_socket);
-    process::spawn(rpc);
+    process::spawn_solitary(rpc);
     log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
     
-    // Initialize transaction pools and assembler
-    let tx_pool = process::spawn(TxPool::new(config.tx_pool_size, state.clone()));
+    // Initialize transaction pools
+    let n_cores = thread::available_parallelism().unwrap().get();
+    let tx_pools: Vec<Handle> = (0..n_cores).map(|_| process::spawn(TxPool::new(
+        config.tx_pool_size / n_cores,
+        state.clone()
+    ))).collect();
     let open_pool = process::spawn(OpenPool::new(config.open_pool_size, state));
+
+    // Create scheduler to synchronize open pool and transaction pools
+    let notified = Some(open_pool.clone()).into_iter().chain(tx_pools.iter().cloned()).collect();
+    process::spawn_solitary_endless(Scheduler::new(notified));
+
+    // Create assembler
     let assembler = process::spawn(Assembler::new());
 
     // Start the network receiver process
@@ -131,7 +143,7 @@ pub fn start() {
         network_socket,
         transmitter,
         assembler,
-        tx_pool,
+        tx_pools,
         open_pool
     ));
     log_info!("SLP listening on udp://{}", config.node_bind_endpoint);

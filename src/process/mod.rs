@@ -25,6 +25,11 @@ pub trait Process {
     fn run(&mut self, mailbox: Mailbox, handle: Handle) -> Result<(), Error>;
 }
 
+/// Spawns a `Process`. Processes are the building blocks upon which
+/// the program is built. They are single-threaded, and communicate
+/// via message-passing: anyone with a `Handle` to a given `Process`
+/// can send messages to it, which the process can receive by calling
+/// `recv` on its `Mailbox`.
 pub fn spawn<P: Process + Send + 'static>(mut process: P) -> Handle {
     let (tx, rx) = kanal::unbounded();
     let handle = Handle(tx.clone());
@@ -49,10 +54,36 @@ pub fn spawn<P: Process + Send + 'static>(mut process: P) -> Handle {
     handle
 }
 
+pub trait ProcessSolitary {
+    const NAME: &'static str;
+    const RESTART_ON_CRASH: bool;
+    fn run(&mut self) -> Result<(), Error>;
+}
+
+/// Spawn a solitary process, which never receives messages.
+pub fn spawn_solitary<P: ProcessSolitary + Send + 'static>(mut process: P) {
+    thread::spawn(move || {
+        loop {
+            match process.run() {
+                Ok(_) => break,
+                Err(e) => {
+                    if !P::RESTART_ON_CRASH {
+                        break;
+                    }
+                    log_error!("process {} failed: {}", P::NAME, e);
+                    thread::sleep(Duration::from_millis(SLEEP_MS_BEFORE_RETRY));
+                    log_warn!("restarting process {}", P::NAME);
+                }
+            }
+        }
+    });
+}
+
 pub trait ProcessEndless {
     fn run(&mut self, mailbox: Mailbox, handle: Handle) -> !;
 }
 
+/// Spawns an endless process, which never finishes or errors.
 pub fn spawn_endless<P: ProcessEndless + Send + 'static>(mut process: P) -> Handle {
     let (tx, rx) = kanal::unbounded();
     let handle = Handle(tx.clone());
@@ -64,17 +95,26 @@ pub fn spawn_endless<P: ProcessEndless + Send + 'static>(mut process: P) -> Hand
     handle
 }
 
-fn recv_message(socket: &mut TcpStream) -> Result<(Handle, Message), Error> {
+pub trait ProcessSolitaryEndless {
+    fn run(&mut self) -> !;
+}
+
+/// Spawns a solitary, endless process, which never finishes, errors, or receives messages.
+pub fn spawn_solitary_endless<P: ProcessSolitaryEndless + Send + 'static>(mut process: P) {
+    thread::spawn(move || process.run());
+}
+
+fn recv_message(socket: &mut TcpStream) -> Result<Option<(Handle, Message)>, Error> {
     let mut len = [0u8; 4];
     socket.read_exact(&mut len)?;
     let len = u32::from_le_bytes(len) as usize;
     // safety: no uninitialized bytes are read
     let mut buf = unsafe { Vec::uninit(len) };
     socket.read_exact(&mut buf)?;
-    Ok(util::decode_from_slice(&buf)?)
+    Ok(util::decode_from_slice(&buf).ok())
 }
 
-fn send_message(socket: &mut TcpStream, msg: Message) -> Result<(), Error> {
+fn send_message(socket: &mut TcpStream, msg: &Message) -> Result<(), Error> {
     let mut buf = Vec::new();
     buf.extend_from_slice(&0u32.to_le_bytes());
     if util::encode_into_writer(&mut buf, &msg).is_err() {
@@ -86,47 +126,34 @@ fn send_message(socket: &mut TcpStream, msg: Message) -> Result<(), Error> {
     Ok(())
 }
 
+/// Connect to a remote process, specified by the given TCP `Endpoint`,
+/// and returns a handle to it.
+/// In case of network error, delivery of messages is not guaranteed.
 pub fn connect_remote(ep: Endpoint) -> Handle {
     let (tx, rx) = kanal::unbounded();
     let handle = Handle(tx.clone());
     thread::spawn(move || {
-        let mut first = true;
+        let mut last_msg = None;
         loop {
-            if first {
-                first = false;
-            } else {
-                thread::sleep(Duration::from_millis(100));
-            }
-            let mut socket1 = match TcpStream::connect(ep.to_socket_addr()) {
-                Ok(v) => v,
-                Err(_) => continue
-            };
-            let mut socket2 = match socket1.try_clone() {
-                Ok(v) => v,
-                Err(_) => continue
-            };
-            let rx = rx.clone();
-            thread::spawn(move || {
-                loop {
-                    let msg = match rx.recv() {
-                        Ok(v) => v,
-                        Err(_) => break
-                    };
-                    if send_message(&mut socket1, msg).is_err() {
-                        break;
+            if let Ok(mut socket) = TcpStream::connect(ep.to_socket_addr()) {
+                if let Ok(mut socket_clone) = socket.try_clone() {
+                    thread::spawn(move || {
+                        while let Ok(msg_maybe) = recv_message(&mut socket_clone) {
+                            if let Some((handle, msg)) = msg_maybe {
+                                handle.send(msg);
+                            }
+                        }
+                    });
+                    for msg in last_msg.take().into_iter().chain(rx.clone()) {
+                        if send_message(&mut socket, &msg).is_err() {
+                            last_msg = Some(msg);
+                            break;
+                        }
                     }
                 }
-            });
-            loop {
-                let (handle, msg) = match recv_message(&mut socket2) {
-                    Ok(v) => v,
-                    Err(_) => break
-                };
-                handle.send(msg);
             }
-            tx.close();
+            thread::sleep(Duration::from_millis(100));
         }
     });
     handle
 }
-

@@ -35,10 +35,8 @@ The Starlight node architecture consists of several components, called processes
 - Receives:
   - *Transaction*: Incoming transactions from the `Receiver`
   - *New Leader Slot*: Triggers the `TxPool` to drain all its transactions and spawn a new `TxExecutor`.
-- Sends: 
-  - *Transaction List*: When creating a new block, sends the prioritized transactions to the `Ledger` for further validation and inclusion.
 
-6. `TxExecutor`: Created to execute a list of transactions. The `TxExecutor` takes each transaction,
+6. `TxExecutor`: Created to execute a list of transactions. The `TxExecutor` takes each `Transaction`, converts it into a `Task`, processes it with the `Bank`, and finally sends the completed `Vec<Transaction>` and `Vec<Task>` to the `Ledger` for inclusion into the block.
 
 7. `OpenPool`: Similar to the `TxPool`, active only during leader mode and dedicated to handling `Open` blocks.
 - Receives:

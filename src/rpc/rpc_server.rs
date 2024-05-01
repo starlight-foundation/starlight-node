@@ -1,6 +1,6 @@
 use std::{io::ErrorKind, net::TcpListener};
 
-use crate::{error, process::{self, Handle, Mailbox, Process}, util::Error};
+use crate::{error, process::{self, Handle, Mailbox, Process, ProcessSolitary}, util::Error};
 
 use super::{RpcReceiver, RpcSender};
 
@@ -48,11 +48,11 @@ fn is_tcp_fatal(kind: ErrorKind) -> bool {
     }
 }   
 
-impl Process for RpcServer {
+impl ProcessSolitary for RpcServer {
     const NAME: &'static str = "RpcReceiver";
     const RESTART_ON_CRASH: bool = true;
 
-    fn run(&mut self, mut mailbox: Mailbox, _: Handle) -> Result<(), Error> {
+    fn run(&mut self) -> Result<(), Error> {
         for stream in self.listener.incoming() {
             let stream = match stream {
                 Ok(stream) => stream,
