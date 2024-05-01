@@ -28,19 +28,6 @@ impl Private {
     }
 
     /// Generate the public key for this private key.
-    ///
-    /// If you wish to convert this private key to a Nano address you will need to take another
-    /// step:
-    /// ```
-    /// use feeless::Private;
-    /// use std::str::FromStr;
-    ///
-    /// # fn main() -> anyhow::Result<()> {
-    /// let s = "0000000000000000000000000000000000000000000000000000000000000000";
-    /// let address = Private::from_str(s)?.to_public().to_address();
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn to_public(&self) -> Public {
         Public::from(self.internal_public())
     }
