@@ -4,7 +4,7 @@ mod error;
 mod merkle;
 mod version;
 mod atomic;
-mod ticker;
+mod interval;
 
 use std::io::Write;
 
@@ -20,7 +20,7 @@ pub use error::Error;
 pub use merkle::{merkle_root, merkle_root_direct};
 pub use version::Version;
 pub use atomic::Atomic;
-pub use ticker::Ticker;
+pub use interval::Interval;
 
 #[macro_export]
 macro_rules! static_assert {

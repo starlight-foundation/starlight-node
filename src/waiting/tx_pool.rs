@@ -19,15 +19,15 @@ impl Hash for Entry {
 
 pub struct TxPool {
     pool: Mempool<Entry>,
-    state: Handle,
+    db: Handle,
     leader_mode: bool
 }
 
 impl TxPool {
-    pub fn new(size: usize, state: Handle) -> Self {
+    pub fn new(size: usize, db: Handle) -> Self {
         Self {
             pool: Mempool::new(size),
-            state,
+            db,
             leader_mode: false
         }
     }
@@ -55,7 +55,7 @@ impl Process for TxPool {
                 },
                 Message::NewLeaderSlot(slot) => {
                     let txs = self.pool.drain(|x| x.0);
-                    self.state.send(Message::TransactionList(Box::new((slot, txs))));
+                    self.db.send(Message::TransactionList(Box::new((slot, txs))));
                 },
                 _ => {}
             }

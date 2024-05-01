@@ -67,11 +67,11 @@ The `Ledger` itself depends on several other processes:
 
 1. `Directory`: This process implements a persistent mapping from public keys to account indices.
 - Receives:
-  - *Get request*: Get the index of an account from its public key.
-  - *Put request*: Put a (public key, index) key-value pair into the mapping, failing if it already exists.
+  - *Batched retrieve request*: Retrieve the indices (or lack thereof) of a list of accounts, given their public keys.
+  - *Batched try-insert request* Try to insert a list of (public key, index) key-value pairs into the mapping, failing if they already exist.
 - Sends:
-  - *Get result*: The result of the Get operation.
-  - *Put result*: The result of the Put operation.
+  - *Batched retrieve response*: A list of results of the batched retrieve request operation.
+  - *Batched try-insert response*: A list of results of the batched try-insert request operation.
 
 2. `Bank`: This object maintains a persistent list of all accounts. It supports the following operations:
 - *Push*: Push an empty account with the given public key and representative to the end of the list, then return its index.

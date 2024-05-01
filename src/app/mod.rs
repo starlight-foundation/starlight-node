@@ -123,11 +123,14 @@ pub fn start() {
     process::spawn_solitary(rpc);
     log_info!("RPC listening on tcp://{}", config.rpc_endpoint);
     
+    // Connect to database
+    let db = process::connect_remote(config.db_endpoint);
+
     // Initialize transaction pools
     let n_cores = thread::available_parallelism().unwrap().get();
     let tx_pools: Vec<Handle> = (0..n_cores).map(|_| process::spawn(TxPool::new(
         config.tx_pool_size / n_cores,
-        state.clone()
+        db.clone()
     ))).collect();
     let open_pool = process::spawn(OpenPool::new(config.open_pool_size, state));
 

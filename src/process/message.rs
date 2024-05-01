@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bincode::{Decode, Encode};
 
-use crate::{network::{Endpoint, ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::{RpcRequest, RpcResponse}, static_assert};
+use crate::{keys::Public, network::{Endpoint, ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::{RpcRequest, RpcResponse}, static_assert};
 
 use super::Handle;
 
@@ -35,7 +35,13 @@ pub enum Message {
     // Broadcast
     Broadcast(Box<(Arc<Vec<Endpoint>>, Vec<u8>)>),
 
-    // Tick
+    // Directory
+    BatchedRetrieveRequest(Box<(Handle, Vec<Public>)>),
+    BatchedRetrieveResponse(Box<Vec<Option<u64>>>),
+    BatchedTryInsertRequest(Box<(Handle, Vec<(Public, u64)>)>),
+    BatchedTryInsertResponse(Box<Vec<bool>>),
+
+    // Interval
     Tick
 }
 
