@@ -17,7 +17,7 @@ The Starlight node architecture consists of several components, called processes
 
 3. `Receiver`: This process handles the receive half of the UDP socket, and accepts incoming messages from the network. 
 - Sends:
-  - *Transaction*: Forwards incoming transactions to the `TxPool` for further processing.
+  - *Transaction*: Forwards incoming transactions to a random `TxPool` for further processing.
   - *Open*: Forwards incoming open requests to the `OpenPool` for further processing.
   - *Shred Note*: Forwards incoming block shreds to the `Assembler` for assembly.
   - *Telemetry Note*: Forwards incoming telemetry messages to the `Transmitter` for processing
@@ -31,31 +31,34 @@ The Starlight node architecture consists of several components, called processes
   - *Shred Note*: If a received shred is new, sends it to the `Transmitter` to be rebroadcast to the network.
   - *New Block*: Sends assembled complete blocks to the `Ledger` for further processing.
 
-5. `TxPool`: Active only during leader mode, this process performs initial validation on incoming transactions and maintains a priority queue based on Proof-of-Work difficulty. 
+5. `TxPool`: Multiple `TxPool`s, one for each core, are created. Incoming transactions are validated, and a priority queue based on Proof-of-Work difficulty is maintained.
 - Receives:
   - *Transaction*: Incoming transactions from the `Receiver`
+  - *New Leader Slot*: Triggers the `TxPool` to drain all its transactions and spawn a new `TxExecutor`.
 - Sends: 
   - *Transaction List*: When creating a new block, sends the prioritized transactions to the `Ledger` for further validation and inclusion.
 
-6. `OpenPool`: Similar to the `TxPool`, active only during leader mode and dedicated to handling `Open` blocks.
+6. `TxExecutor`: Created to execute a list of transactions. The `TxExecutor` takes each transaction,
+
+7. `OpenPool`: Similar to the `TxPool`, active only during leader mode and dedicated to handling `Open` blocks.
 - Receives:
   - *Open*: Incoming open requests from the `Receiver` 
 - Sends:
   - *Open List*: When creating a new block, sends the prioritized `Open` blocks to the `Ledger` for further validation and inclusion.
 
-7. `VotePool`: Active only during leader mode, this process maintains a priority queue of votes for the current block.
+8. `VotePool`: Active only during leader mode, this process maintains a priority queue of votes for the current block.
 - Receives:
   - *Vote*: Incoming votes from the `Receiver`
 - Sends:
   - *Vote List*: When creating a new block, sends the prioritized votes to the `Ledger` for further validation and inclusion.
 
-8. `Ledger`: Maintains the current state, as well as all pending and finalized blocks, and has the authority to process and finalize transactions. 
+9. `Ledger`: Maintains the current state, as well as all pending and finalized blocks, and has the authority to process and finalize transactions. 
 - Receives:
   - *Transaction List*: Validated transactions from the `TxPool` in leader mode
   - *Open List*: Validated open requests from the `OpenPool` in leader mode
   - *Vote List*: Validated votes from the `VotePool` in leader mode
 
-9. `Rpc`: Handles RPC requests and responses sent over TCP.
+10. `Rpc`: Handles RPC requests and responses sent over TCP.
 - Sends:
   - *Rpc Request*: Sends incoming RPC requests over the network to the relevant process
 - Receives:
