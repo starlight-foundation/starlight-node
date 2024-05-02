@@ -1,17 +1,17 @@
 use std::hash::{Hash, Hasher};
-use crate::{process::{Handle, Mailbox, Message, Process}, protocol::{Open, Verified}, util::Error};
+use crate::{process::{Handle, Mailbox, Message, Process}, protocol::{Open, OpenFull}, util::Error};
 use super::Mempool;
 
-struct Entry(Box<Verified<Open>>);
+struct Entry(Box<OpenFull>);
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.0.val.account == other.0.val.account
+        self.0.open.account == other.0.open.account
     }
 }
 impl Eq for Entry {}
 impl Hash for Entry {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.val.account.hash(state);
+        self.0.open.account.hash(state);
     }
 }
 
@@ -44,12 +44,12 @@ impl Process for OpenPool {
                     self.leader_mode = false;
                 },
                 Message::Open(open) => {
-                    let open_verified = match Verified::new(*open) {
-                        Ok(verified) => verified,
-                        Err(_) => continue
+                    let hash = match open.verify_and_hash() {
+                        Ok(v) => v,
+                        _ => continue
                     };
-                    let difficulty = open_verified.val.work.difficulty(&open_verified.hash);
-                    self.pool.insert(Entry(Box::new(open_verified)), difficulty);
+                    let difficulty = open.work.difficulty(&hash);
+                    self.pool.insert(Entry(Box::new(OpenFull::new(*open, hash))), difficulty);
                 },
                 Message::NewLeaderSlot(slot) => {
                     let opens = self.pool.drain(|x| x.0);

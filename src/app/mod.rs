@@ -130,7 +130,8 @@ pub fn start() {
     let n_cores = thread::available_parallelism().unwrap().get();
     let tx_pools: Vec<Handle> = (0..n_cores).map(|_| process::spawn(TxPool::new(
         config.tx_pool_size / n_cores,
-        db.clone()
+        db.clone(),
+        state.clone()
     ))).collect();
     let open_pool = process::spawn(OpenPool::new(config.open_pool_size, state));
 

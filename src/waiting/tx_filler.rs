@@ -1,28 +1,26 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::{error, keys::Public, process::{Handle, Mailbox, Message, Process}, protocol::{Task, Transaction, Verified}, state::{Bank, Batch}, util::Error};
+use crate::{error, keys::Public, process::{Handle, Mailbox, Message, Process}, protocol::{Task, Tx, TxFull, TxHalf}, state::{Bank, Batch}, util::Error};
 
-pub struct TxExecutor {
-    transactions: Vec<Verified<Transaction>>,
+pub struct TxFiller {
+    tx_half_list: Vec<Box<TxHalf>>,
     db: Handle,
-    state: Handle,
-    bank: Arc<Bank>,
-    batch: Batch
+    state: Handle
 }
 
-impl TxExecutor {
-    pub fn new(transactions: Vec<Verified<Transaction>>, db: Handle, state: Handle, bank: Arc<Bank>, batch: Batch) -> Self {
-        Self { transactions, db, state, bank, batch }
+impl TxFiller {
+    pub fn new(tx_half_list: Vec<Box<TxHalf>>, db: Handle, state: Handle) -> Self {
+        Self { tx_half_list, db, state }
     }
 }
 
-impl Process for TxExecutor {
+impl Process for TxFiller {
     const NAME: &'static str = "TxExecutor";
     const RESTART_ON_CRASH: bool = false;
 
     fn run(&mut self, mut mailbox: Mailbox, handle: Handle) -> Result<(), Error> {
-        let requests: Vec<Public> = self.transactions.iter().map(|x| {
-            [x.val.from, x.val.to]
+        let requests: Vec<Public> = self.tx_half_list.iter().map(|x| {
+            [x.tx.from, x.tx.to]
         }).flatten().collect();
         let requests_len = requests.len();
         self.db.send(Message::BatchedRetrieveRequest(Box::new((handle.clone(), requests))));
@@ -41,18 +39,15 @@ impl Process for TxExecutor {
                 requests_len
             ));
         }
-        let tasks: Vec<Task> = responses
+        let tx_full_list: Vec<Box<TxFull>> = responses
             .chunks_exact(2)
             .filter_map(|x| Some((x[0]?, x[1]?)))
-            .zip(self.transactions.iter())
-            .map(|((from_index, to_index), tx)| Task {
-                nonce: tx.val.nonce,
-                from_index,
-                amount: tx.val.amount,
-                to_index
+            .zip(self.tx_half_list.drain(..))
+            .map(|((from_index, to_index), tx_half)| {
+                tx_half.provide(from_index, to_index)
             })
-            .filter(|task| self.bank.queue_task(&task, self.batch).is_ok())
             .collect();
+        self.state.send(Message::TxFullList(Box::new(tx_full_list)));
         Ok(())
     }
 }

@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{Account, Batch, Block};
 use crate::keys::Public;
-use crate::protocol::{Amount, Open, Task, Transaction};
+use crate::protocol::{Amount, Open, Task, Tx};
 use crate::storage::{ListStore, ObjectStore};
 use crate::util::{Atomic, Error};
 

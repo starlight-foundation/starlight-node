@@ -1,5 +1,5 @@
 use std::{sync::Arc, net::UdpSocket};
-use crate::{process::{Handle, Mailbox, Message, Process}, util::{DefaultInitVec, Error}};
+use crate::{process::{Handle, Mailbox, Message, Process}, protocol::TxEmpty, util::{DefaultInitVec, Error}};
 use super::{models::Note, MTU};
 use rand::seq::SliceRandom;
 
@@ -64,7 +64,7 @@ impl Process for Receiver {
                 }
                 Note::Transaction(tx) => {
                     self.tx_pools.choose(&mut rand::thread_rng()).unwrap().send(
-                        Message::Transaction(tx)
+                        Message::TxEmpty(TxEmpty::boxed(*tx))
                     );
                 }
                 Note::Open(open) => {

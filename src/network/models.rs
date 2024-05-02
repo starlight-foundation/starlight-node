@@ -3,7 +3,7 @@ use bincode::{Decode, Encode};
 use crate::{
     error,
     keys::{Hash, HashBuilder, Private, Public, Signature},
-    protocol::{Amount, Open, Slot, Transaction},
+    protocol::{Amount, Open, Slot, Tx},
     util::{self, Error, Version},
 };
 
@@ -90,7 +90,7 @@ const MAGIC_NUMBER: [u8; 7] = [0x3f, 0xd1, 0x0f, 0xe2, 0x5e, 0x76, 0xfa];
 pub enum Note {
     TelemetryNote(Box<TelemetryNote>),
     ShredNote(Box<ShredNote>),
-    Transaction(Box<Transaction>),
+    Transaction(Box<Tx>),
     Open(Box<Open>)
 }
 impl Note {

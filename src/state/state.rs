@@ -2,7 +2,7 @@ use std::{sync::{Arc, Mutex}, time::Duration};
 
 //use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::{error, keys::{Hash, Identity, Private}, process::{self, Handle, Mailbox, Message, Process}, protocol::{Amount, Open, Slot, Task, Transaction, Verified}, util::Error};
+use crate::{error, keys::{Hash, Identity, Private}, process::{self, Handle, Mailbox, Message, Process}, protocol::{Amount, Open, OpenFull, Slot, Task, Tx, TxFull}, util::Error};
 
 use super::{Bank, Block, Dag};
 
@@ -25,9 +25,9 @@ pub struct State {
     /// The slot of the block-in-construction
     cur_slot: Option<Slot>,
     /// The transactions of the block-in-construction
-    cur_txs: Option<Vec<Box<Verified<Transaction>>>>,
+    cur_txs: Option<Vec<Box<TxFull>>>,
     /// The opens of the block-in-construction
-    cur_opens: Option<Vec<Box<Verified<Open>>>>
+    cur_opens: Option<Vec<Box<OpenFull>>>
 }
 
 impl State {

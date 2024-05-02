@@ -1,10 +1,11 @@
 use crate::{
     error,
     keys::{Hash, Identity, Private, Public, Signature},
-    protocol::{Open, Slot, Transaction, Verifiable, Vote},
+    protocol::{Open, Slot, Tx, Vote},
     util::{self, Error},
 };
 
+#[repr(C)]
 pub struct Block {
     /// The leader of the current block
     pub leader: Public,
@@ -18,10 +19,13 @@ pub struct Block {
     pub hash: Hash,
     /// The merkle tree root of all accounts at this block
     pub state_hash: Hash,
-    /// The account open requests in this block.
-    pub opens: Vec<Open>,
     /// The transactions in this block.
-    pub transactions: Vec<Transaction>,
+    /// They are processed BEFORE any open requests.
+    pub transactions: Vec<Tx>,
+    /// The account open requests in this block.
+    /// Accounts created in this block cannot
+    /// be sent funds in the same block.
+    pub opens: Vec<Open>,
     /// The votes in this block.
     pub votes: Vec<Vote>,
 }
@@ -49,7 +53,7 @@ impl Block {
         previous: Hash,
         opens: Vec<Open>,
         open_hashes: Vec<Hash>,
-        transactions: Vec<Transaction>,
+        transactions: Vec<Tx>,
         tx_hashes: Vec<Hash>,
         votes: Vec<Vote>,
         vote_hashes: Vec<Hash>,

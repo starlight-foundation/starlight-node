@@ -2,7 +2,6 @@ use bincode::{Encode, Decode};
 
 use crate::{keys::{Difficulty, Hash, Public, Signature, Work}, util::{self, Error}};
 
-use super::Verifiable;
 
 #[repr(C)]
 #[derive(Encode, Decode, Clone, Copy)]
@@ -13,8 +12,8 @@ pub struct Open {
     pub signature: Signature
 }
 
-impl Verifiable for Open {
-    fn verify_and_hash(&self) -> Result<Hash, Error> {
+impl Open {
+    pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let bytes = util::view_as_bytes(self);
         // include `account` and `representative`
         let work_hash = Hash::digest(&bytes[0..64]);

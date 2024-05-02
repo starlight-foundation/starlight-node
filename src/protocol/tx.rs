@@ -4,7 +4,7 @@ use crate::{
     util::{self, Archived, Error},
 };
 
-use super::{Amount, Verifiable};
+use super::Amount;
 use bincode::{Encode, Decode};
 
 /// A transaction, either a normal or change representative transaction.
@@ -14,7 +14,7 @@ use bincode::{Encode, Decode};
 /// - The representative of `from` is changed to `to`.
 #[derive(Encode, Decode, Clone, Copy, Debug)]
 #[repr(C)]
-pub struct Transaction {
+pub struct Tx {
     pub nonce: u64,
     pub from: Public,
     pub amount: Amount,
@@ -23,14 +23,11 @@ pub struct Transaction {
     pub signature: Signature,
 }
 
-impl Transaction {
+impl Tx {
     pub fn is_change_representative(&self) -> bool {
         self.amount == Amount::zero()
     }
-}
-
-impl Verifiable for Transaction {
-    fn verify_and_hash(&self) -> Result<Hash, Error> {
+    pub fn verify_and_hash(&self) -> Result<Hash, Error> {
         let bytes = util::view_as_bytes(self);
         // include `nonce` and `from`
         let work_hash = Hash::digest(&bytes[0..40]);

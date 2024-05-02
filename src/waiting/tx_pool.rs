@@ -1,33 +1,35 @@
 use std::hash::{Hash, Hasher};
-use crate::{process::{Handle, Mailbox, Message, Process}, protocol::{Transaction, Verified}, util::Error};
-use super::Mempool;
+use crate::{process::{self, Handle, Mailbox, Message, Process}, protocol::TxHalf, util::Error};
+use super::{Mempool, TxFiller};
 
-struct Entry(Box<Verified<Transaction>>);
+struct Entry(Box<TxHalf>);
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.0.val.nonce == other.0.val.nonce
-        && self.0.val.from == other.0.val.from
+        self.0.tx.nonce == other.0.tx.nonce
+        && self.0.tx.from == other.0.tx.from
     }
 }
 impl Eq for Entry {}
 impl Hash for Entry {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.val.nonce.hash(state);
-        self.0.val.from.hash(state);
+        self.0.tx.nonce.hash(state);
+        self.0.tx.from.hash(state);
     }
 }
 
 pub struct TxPool {
     pool: Mempool<Entry>,
     db: Handle,
+    state: Handle,
     leader_mode: bool
 }
 
 impl TxPool {
-    pub fn new(size: usize, db: Handle) -> Self {
+    pub fn new(size: usize, db: Handle, state: Handle) -> Self {
         Self {
             pool: Mempool::new(size),
             db,
+            state,
             leader_mode: false
         }
     }
@@ -45,17 +47,22 @@ impl Process for TxPool {
                     self.pool.clear();
                     self.leader_mode = false;
                 },
-                Message::Transaction(tx) => {
-                    let tx_verified = match Verified::new(*tx) {
-                        Ok(verified) => verified,
+                Message::TxEmpty(tx_empty) => {
+                    let hash = match tx_empty.tx.verify_and_hash() {
+                        Ok(v) => v,
                         Err(_) => continue
                     };
-                    let difficulty = tx_verified.val.work.difficulty(&tx_verified.hash);
-                    self.pool.insert(Entry(Box::new(tx_verified)), difficulty);
+                    let tx_half = tx_empty.provide(hash);
+                    let difficulty = tx_half.tx.work.difficulty(&tx_half.hash);
+                    self.pool.insert(Entry(tx_half), difficulty);
                 },
                 Message::NewLeaderSlot(slot) => {
-                    let txs = self.pool.drain(|x| x.0);
-                    self.db.send(Message::TransactionList(Box::new((slot, txs))));
+                    let tx_half_list = self.pool.drain(|x| x.0);
+                    process::spawn(TxFiller::new(
+                        tx_half_list,
+                        self.db.clone(),
+                        self.state.clone(),
+                    ));
                 },
                 _ => {}
             }

@@ -3,7 +3,7 @@ use std::{net::UdpSocket, sync::Arc, time::Duration};
 use rand::Rng;
 
 use crate::{
-    error, keys::{Identity, Private, Public, Signature}, process::{self, Handle, Mailbox, Message, Process, ProcessEndless}, protocol::{Amount, Slot, Transaction}, util::{self, DefaultInitVec, Error, Interval, UninitVec, Version}
+    error, keys::{Identity, Private, Public, Signature}, process::{self, Handle, Mailbox, Message, Process, ProcessEndless}, protocol::{Amount, Slot, Tx}, util::{self, DefaultInitVec, Error, Interval, UninitVec, Version}
 };
 
 use super::{models::TelemetryNote, CenterMap, Endpoint, Note, Peer, Shred, ShredNote};

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bincode::{Decode, Encode};
 
-use crate::{keys::Public, network::{Endpoint, ShredNote, TelemetryNote}, protocol::{Open, Slot, Transaction, Verified}, rpc::{RpcRequest, RpcResponse}, static_assert};
+use crate::{keys::Public, network::{Endpoint, ShredNote, TelemetryNote}, protocol::{Open, OpenFull, Slot, Tx, TxEmpty, TxFull}, rpc::{RpcRequest, RpcResponse}, static_assert};
 
 use super::Handle;
 
@@ -14,8 +14,8 @@ pub enum Message {
     NewLeaderSlot(Slot),
 
     // Transaction messages
-    Transaction(Box<Transaction>),
-    TransactionList(Box<(Slot, Vec<Box<Verified<Transaction>>>)>),
+    TxEmpty(Box<TxEmpty>),
+    TxFullList(Box<Vec<Box<TxFull>>>),
 
     // Shred note messages
     ShredNote(Box<ShredNote>),
@@ -26,7 +26,7 @@ pub enum Message {
 
     // Open messages
     Open(Box<Open>),
-    OpenList(Box<(Slot, Vec<Box<Verified<Open>>>)>),
+    OpenList(Box<(Slot, Vec<Box<OpenFull>>)>),
     
     // RPC
     RpcRequest(Box<(Handle, u64, RpcRequest)>),
