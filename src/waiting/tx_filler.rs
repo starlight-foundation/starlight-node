@@ -15,7 +15,7 @@ impl TxFiller {
 }
 
 impl Process for TxFiller {
-    const NAME: &'static str = "TxExecutor";
+    const NAME: &'static str = "TxFiller";
     const RESTART_ON_CRASH: bool = false;
 
     fn run(&mut self, mut mailbox: Mailbox, handle: Handle) -> Result<(), Error> {

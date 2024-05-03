@@ -1,9 +1,11 @@
 mod message;
 mod handle;
 mod mailbox;
+mod oncebox;
 pub use message::Message;
 pub use handle::Handle;
 pub use mailbox::Mailbox;
+pub use oncebox::Oncebox;
 
 use std::io::{Read, Write};
 use std::net::TcpStream;

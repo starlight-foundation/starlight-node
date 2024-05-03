@@ -1,5 +1,5 @@
 use std::hash::{Hash, Hasher};
-use crate::{process::{Handle, Mailbox, Message, Process}, protocol::{Open, OpenFull}, util::Error};
+use crate::{process::{Handle, Mailbox, Message, Process}, protocol::OpenFull, util::Error};
 use super::Mempool;
 
 struct Entry(Box<OpenFull>);
@@ -43,7 +43,7 @@ impl Process for OpenPool {
                     self.pool.clear();
                     self.leader_mode = false;
                 },
-                Message::Open(open) => {
+                Message::Open(open) if self.leader_mode => {
                     let hash = match open.verify_and_hash() {
                         Ok(v) => v,
                         _ => continue
@@ -51,7 +51,7 @@ impl Process for OpenPool {
                     let difficulty = open.work.difficulty(&hash);
                     self.pool.insert(Entry(Box::new(OpenFull::new(*open, hash))), difficulty);
                 },
-                Message::NewLeaderSlot(slot) => {
+                Message::NewLeaderSlot(slot) if self.leader_mode => {
                     let opens = self.pool.drain(|x| x.0);
                     self.state.send(Message::OpenList(Box::new((slot, opens))));
                 },

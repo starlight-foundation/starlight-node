@@ -12,7 +12,8 @@ pub struct Handle(pub(super) Sender<Message>);
 
 impl Handle {
     pub fn send(&self, msg: Message) {
-        _ = self.0.send(msg);
+        // we don't ever want to block when sending!
+        _ = self.0.try_send(msg);
     }
 }
 

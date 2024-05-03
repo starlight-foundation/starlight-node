@@ -268,9 +268,6 @@ impl Process for State {
     const NAME: &'static str = "State";
     const RESTART_ON_CRASH: bool = true;
     fn run(&mut self, mut mailbox: Mailbox, _: Handle) -> Result<(), Error> {
-        loop {
-            process::sleep(Duration::from_secs(1));
-        }
         /*loop {
             let msg = mailbox.recv();
             match msg {
@@ -297,5 +294,8 @@ impl Process for State {
                 _ => {}
             }
         }*/
+        loop {
+            process::sleep(Duration::from_secs(1));
+        }
     }
 }

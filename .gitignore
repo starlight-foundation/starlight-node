@@ -1,3 +1,4 @@
 /target
 /config.toml
-/data
+/directory
+/test_directory

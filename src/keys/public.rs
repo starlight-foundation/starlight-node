@@ -10,12 +10,18 @@ use bincode::Encode;
 use blake2b_simd::Params;
 use ed25519_dalek_blake2_feeless::PublicKey;
 use ed25519_dalek_blake2_feeless::Verifier;
+use heed::bytemuck::Pod;
+use heed::bytemuck::Zeroable;
 use primitive_types::U512;
+use rand::RngCore;
 
-/// 256 bit public key which can be converted into an [Address](crate::Address) or verify a [Signature](crate::Signature).
+/// 256 bit public key which can be converted into an address or verify a [Signature](crate::keys::Signature).
 #[derive(Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Encode, Decode, Default)]
 #[repr(align(8))]
 pub struct Public([u8; 32]);
+
+unsafe impl Zeroable for Public {}
+unsafe impl Pod for Public {}
 
 hexify!(Public, "public key");
 
@@ -101,6 +107,12 @@ fn account_decode(value: u8) -> u8 {
 }
 
 impl Public {
+    pub fn random() -> Self {
+        let mut this = Self::zero();
+        rand::thread_rng().fill_bytes(&mut this.0);
+        this
+    }
+
     /// Convert the public key to an address string
     pub fn to_address(&self) -> String {
         let mut number = U512::from_big_endian(&self.0);
