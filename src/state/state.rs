@@ -2,6 +2,8 @@ use std::{sync::{Arc, Mutex}, time::Duration};
 
 //use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::{keys::Public, storage::Database};
+
 use crate::{error, keys::{Hash, Identity, Private}, process::{self, Handle, Mailbox, Message, Process}, protocol::{Amount, Open, OpenFull, Slot, Task, Tx, TxFull}, util::Error};
 
 use super::{Bank, Block, Dag};
@@ -16,6 +18,8 @@ pub struct State {
     id: Identity,
     /// Are we in leader mode?
     leader_mode: bool,
+    /// The database of the longest chain
+    db: Database<Public, u64>,
     /// The account state of the longest chain
     bank: Arc<Bank>,
     /// All finalized blocks
