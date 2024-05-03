@@ -14,7 +14,7 @@ impl<K: Pod, V: Pod> Database<K, V> {
         let env = EnvOpenOptions::new()
             .max_dbs(1)
             .max_readers(u32::MAX)
-            .map_size(usize::MAX)
+            .map_size(i32::MAX as usize + 1)
             .open(directory)?;
         Ok(Self {
             db: env.create_database(None)?,
